@@ -1,5 +1,11 @@
 # Beget API MCP Server
 
+[![Tests](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Tests.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Tests.yml)
+[![Lint](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Lint.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Lint.yml)
+[![Security](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Security.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Security.yml)
+[![Gitleaks](https://github.com/kordax/beget-api-mcp-server/actions/workflows/gitleaks.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/gitleaks.yml)
+[![Coverage](https://raw.githubusercontent.com/kordax/beget-api-mcp-server/badges/.badges/main/coverage.svg)](https://github.com/kordax/beget-api-mcp-server/tree/badges)
+
 [Документация на русском](README.ru.md)
 
 The Russian documentation was translated with AI assistance.
@@ -61,7 +67,7 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate starts at 65% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 ## Install on the system
 

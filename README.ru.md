@@ -1,5 +1,11 @@
 # MCP-сервер для Beget API
 
+[![Tests](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Tests.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Tests.yml)
+[![Lint](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Lint.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Lint.yml)
+[![Security](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Security.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/Security.yml)
+[![Gitleaks](https://github.com/kordax/beget-api-mcp-server/actions/workflows/gitleaks.yml/badge.svg?branch=main)](https://github.com/kordax/beget-api-mcp-server/actions/workflows/gitleaks.yml)
+[![Coverage](https://raw.githubusercontent.com/kordax/beget-api-mcp-server/badges/.badges/main/coverage.svg)](https://github.com/kordax/beget-api-mcp-server/tree/badges)
+
 Русская документация переведена с помощью ИИ.
 
 Я сделал этот MCP-сервер для управления обычным хостингом Beget из разных клиентов. В примерах встречается Codex, но сам сервер от него не зависит. Он так же работает с JetBrains AI Assistant, Claude Desktop, Cursor, VS Code и другими совместимыми клиентами.
@@ -65,7 +71,7 @@ go test -race ./...
 
 Те же проверки запускаются в GitHub Actions. Отчет покрытия сохраняется как артефакт сборки.
 
-Полный набор линтеров, проверок уязвимостей, статического анализа безопасности и поиска секретов запускается командой `task verify`. Перед первым запуском нужно установить зафиксированные версии инструментов через `task tools`. Те же категории проверок выполняются в GitHub Actions, а Dependabot следит за модулями Go и workflow.
+Полный набор тестов, проверки покрытия, линтеров, поиска уязвимостей, статического анализа безопасности и поиска секретов запускается командой `task verify`. Перед первым запуском нужно установить зафиксированные версии инструментов через `task tools`. Начальный порог покрытия составляет 65%, а badge публикуется из ветки `badges`. Те же категории проверок выполняются в GitHub Actions, а Dependabot следит за модулями Go и workflow.
 
 ## Установка в систему
 

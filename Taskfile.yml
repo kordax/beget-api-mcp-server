@@ -5,6 +5,7 @@ vars:
   GOVULNCHECK_VERSION: v1.6.0
   GOSEC_VERSION: v2.27.1
   GITLEAKS_VERSION: v8.30.1
+  COVERAGE_VERSION: v2.18.8
 
 tasks:
   tools:
@@ -14,6 +15,7 @@ tasks:
       - go install golang.org/x/vuln/cmd/govulncheck@{{.GOVULNCHECK_VERSION}}
       - go install github.com/securego/gosec/v2/cmd/gosec@{{.GOSEC_VERSION}}
       - go install github.com/zricethezav/gitleaks/v8@{{.GITLEAKS_VERSION}}
+      - go install github.com/vladopajic/go-test-coverage/v2@{{.COVERAGE_VERSION}}
 
   test:
     desc: Run tests with the race detector
@@ -37,12 +39,20 @@ tasks:
       - gosec -concurrency=1 ./...
       - gitleaks dir --redact --no-banner .
 
+  coverage:
+    desc: Generate coverage and enforce the configured threshold
+    cmds:
+      - go test ./... -coverprofile=coverage.out -covermode=atomic -coverpkg=./...
+      - go-test-coverage --config=./testcoverage.yml
+
   verify:
     desc: Run the complete local verification suite
     cmds:
       - test -z "$(gofmt -l .)"
       - go vet ./...
       - go test -race ./...
+      - go test ./... -coverprofile=coverage.out -covermode=atomic -coverpkg=./...
+      - go-test-coverage --config=./testcoverage.yml
       - golangci-lint run
       - go mod verify
       - govulncheck ./...

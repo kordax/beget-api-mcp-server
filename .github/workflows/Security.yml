@@ -1,0 +1,34 @@
+name: Security
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.5"
+          cache: true
+      - uses: actions/cache@v6
+        id: security-tools
+        with:
+          path: ~/go/bin
+          key: ${{ runner.os }}-security-tools-govulncheck-1.6.0-gosec-2.27.1
+      - name: install security tools
+        if: steps.security-tools.outputs.cache-hit != 'true'
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.6.0
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.27.1
+      - name: verify modules
+        run: go mod verify
+      - name: check vulnerabilities
+        run: govulncheck ./...
+      - name: analyze Go security
+        run: gosec -concurrency=1 ./...
