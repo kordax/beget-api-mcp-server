@@ -98,6 +98,6 @@ Official references:
 
 ## Author and license
 
-Created by Dmitry Morozov, also known as kordax. Contact: `kordaxmint@gmail.com`.
+Created by Dmitry Morozov (kordax).
 
 The project is distributed under the MIT License. See [LICENSE](LICENSE).
