@@ -8,18 +8,25 @@ import (
 	"errors"
 	"log"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/kordax/beget-api-mcp-server/internal/transport"
 	"go.uber.org/fx"
 )
 
-func RegisterLifecycle(lifecycle fx.Lifecycle, shutdowner fx.Shutdowner, mcpServer *mcp.Server) {
+func RegisterLifecycle(lifecycle fx.Lifecycle, shutdowner fx.Shutdowner, runtime *transport.Runtime) {
 	serverContext, cancelServer := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 
 	lifecycle.Append(fx.Hook{
 		OnStart: func(context.Context) error {
+			if err := runtime.Prepare(); err != nil {
+				cancelServer()
+				return err
+			}
+			if endpoint := runtime.Endpoint(); endpoint != "" {
+				log.Printf("MCP %s transport listening on %s", runtime.Mode(), endpoint)
+			}
 			go func() {
-				err := mcpServer.Run(serverContext, &mcp.StdioTransport{})
+				err := runtime.Run(serverContext)
 				done <- err
 
 				options := make([]fx.ShutdownOption, 0, 1)
@@ -35,14 +42,15 @@ func RegisterLifecycle(lifecycle fx.Lifecycle, shutdowner fx.Shutdowner, mcpServ
 		},
 		OnStop: func(ctx context.Context) error {
 			cancelServer()
+			shutdownErr := runtime.Shutdown(ctx)
 			select {
 			case err := <-done:
 				if errors.Is(err, context.Canceled) {
-					return nil
+					err = nil
 				}
-				return err
+				return errors.Join(shutdownErr, err)
 			case <-ctx.Done():
-				return ctx.Err()
+				return errors.Join(shutdownErr, ctx.Err())
 			}
 		},
 	})

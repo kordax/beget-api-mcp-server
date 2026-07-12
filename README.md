@@ -2,7 +2,7 @@
 
 [Документация на русском](README.ru.md)
 
-I built this local MCP server to manage a Beget hosting account from any MCP client that supports stdio. Codex is used in some examples, but the server has no dependency on Codex. It works the same way with JetBrains AI Assistant, Claude Desktop, Cursor, VS Code, and other compatible clients.
+I built this MCP server to manage a Beget hosting account from different MCP clients. Codex is used in some examples, but the server has no dependency on Codex. It works the same way with JetBrains AI Assistant, Claude Desktop, Cursor, VS Code, and other compatible clients.
 
 I intentionally expose a small set of typed tools instead of a universal API proxy. Read operations are marked read-only. Every operation that changes hosting state requires `confirm: true` before the server sends an HTTP request.
 
@@ -38,6 +38,18 @@ The project uses:
 - Testify 1.11.1
 - `github.com/kordax/basic-utils/v3` 3.4.0
 - the official MCP Go SDK
+
+## Transports
+
+The server supports three mutually exclusive transports:
+
+- stdio is the default and can also be selected with `--stdio`
+- Streamable HTTP is selected with `--streamable-http`
+- legacy SSE is selected with `--sse`
+
+HTTP transports listen on `127.0.0.1:8080` by default and cannot bind to a non-loopback address. The endpoint, address, Streamable HTTP session mode, and response mode have separate flags.
+
+See [the transport guide](docs/transports.md) for every flag and client configuration example.
 
 ## Build and test
 

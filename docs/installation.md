@@ -1,6 +1,6 @@
 # System installation
 
-This guide installs the server once for the current user and connects it to an MCP client. Codex is one example. The same stdio process can be started by JetBrains AI Assistant, Claude Desktop, Cursor, VS Code, or another compatible client.
+This guide installs the server once for the current user and connects it to an MCP client. Codex is one example. The default setup uses stdio. Streamable HTTP and legacy SSE are documented in [the transport guide](transports.md).
 
 ## Requirements
 
@@ -57,7 +57,7 @@ It does not call Codex APIs and does not require a Codex-specific launcher. A ty
   "mcpServers": {
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": [],
+      "args": ["--stdio"],
       "env": {
         "BEGET_API_LOGIN": "your-beget-login",
         "BEGET_API_KEY": "your-api-password"
@@ -99,7 +99,7 @@ This example keeps an existing Gortex setup and adds Beget next to it:
     },
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": [],
+      "args": ["--stdio"],
       "env": {
         "BEGET_API_LOGIN": "your-beget-login",
         "BEGET_API_KEY": "your-api-password"
