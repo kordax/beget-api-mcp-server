@@ -2,6 +2,8 @@
 
 [Документация на русском](README.ru.md)
 
+The Russian documentation was translated with AI assistance.
+
 I built this MCP server to manage a Beget hosting account from different MCP clients. Codex is used in some examples, but the server has no dependency on Codex. It works the same way with JetBrains AI Assistant, Claude Desktop, Cursor, VS Code, and other compatible clients.
 
 I intentionally expose a small set of typed tools instead of a universal API proxy. Read operations are marked read-only. Every operation that changes hosting state requires `confirm: true` before the server sends an HTTP request.
