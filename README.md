@@ -69,6 +69,8 @@ go test -race ./...
 
 The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 97.6% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
+Run `task mcp-inspector` to start the pinned official MCP Inspector for interactive protocol and tool testing. This command requires Node.js and npm with `npx`.
+
 ## Install on the system
 
 For a permanent user-wide installation and MCP client configuration, follow [the installation guide](docs/installation.md).
