@@ -49,7 +49,7 @@ go test -race ./...
 
 ## Install on the system
 
-For a permanent user-wide installation and global Codex registration, follow [the installation guide](docs/installation.md).
+For a permanent user-wide installation and global registration in Codex or JetBrains IDEs, follow [the installation guide](docs/installation.md).
 
 The short version is:
 

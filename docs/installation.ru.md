@@ -62,6 +62,53 @@ env = { BEGET_API_LOGIN = "your-beget-login" }
 
 После изменения конфигурации Codex нужно перезапустить. Инструменты Beget станут доступны из любого проекта.
 
+## Глобальное подключение в JetBrains и GoLand
+
+GoLand и другие актуальные JetBrains IDE умеют запускать локальные MCP-серверы через stdio. Нужно открыть `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`, нажать `Add`, выбрать JSON-конфигурацию для STDIO и установить уровень сервера `Global`.
+
+Для `codex-keyring` и MCP-бинарника лучше указать абсолютные пути. IDE, запущенная с рабочего стола, может получить другой `PATH`, чем терминал. Перед настройкой пути можно узнать так:
+
+```bash
+command -v codex-keyring
+command -v gortex
+```
+
+Этот пример оставляет существующий Gortex и добавляет рядом Beget:
+
+```json
+{
+  "mcpServers": {
+    "gortex": {
+      "command": "gortex",
+      "args": [
+        "mcp",
+        "--proxy"
+      ]
+    },
+    "beget": {
+      "command": "/home/your-user/.local/bin/codex-keyring",
+      "args": [
+        "run",
+        "beget-api-key",
+        "--",
+        "/home/your-user/.local/bin/beget-api-mcp-server"
+      ],
+      "env": {
+        "BEGET_API_LOGIN": "your-beget-login"
+      }
+    }
+  }
+}
+```
+
+Нужно заменить `/home/your-user` и `your-beget-login` своими значениями. `BEGET_API_KEY` в JSON добавлять нельзя.
+
+После сохранения нужно нажать `OK`, затем `Apply`. В колонке статуса должно появиться успешное подключение, а в списке инструментов должны быть команды Beget. Если автоматический запуск отключен, сервер нужно включить вручную или нажать `Reconnect`.
+
+Чтобы пользовательские MCP-серверы были доступны Junie, нужно открыть `Settings | Tools | AI Assistant | Agents` и включить `Pass custom MCP servers`.
+
+Если процесс не запускается, нужно открыть `Help | Show Log in Explorer`, перейти в каталог `mcp` и посмотреть лог сервера Beget. Чаще всего у IDE, запущенной с рабочего стола, проблема оказывается в неправильном пути к бинарнику.
+
 ## Установка из локального клона
 
 Этот вариант удобен во время разработки сервера:
