@@ -89,7 +89,7 @@ func ParseOptions(arguments Arguments) (Options, error) {
 		mode = ModeSSE
 	}
 	if mode != ModeStreamableHTTP && (*jsonResponse || *stateless || visited["streamable-session-timeout"]) {
-		return Options{}, errors.New("Streamable HTTP options require --streamable-http")
+		return Options{}, errors.New("streamable HTTP options require --streamable-http")
 	}
 	if *sessionTimeout < 0 {
 		return Options{}, errors.New("session timeout cannot be negative")

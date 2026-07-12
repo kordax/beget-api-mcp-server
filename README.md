@@ -59,6 +59,8 @@ go vet ./...
 go test -race ./...
 ```
 
+The repository also provides `task verify` for the complete lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+
 ## Install on the system
 
 For a permanent user-wide installation and MCP client configuration, follow [the installation guide](docs/installation.md).

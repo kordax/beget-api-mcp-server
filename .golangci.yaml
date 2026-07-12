@@ -1,0 +1,19 @@
+version: "2"
+
+run:
+  concurrency: 1
+  timeout: 5m
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+  disable:
+    - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

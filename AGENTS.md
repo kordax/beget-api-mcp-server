@@ -20,7 +20,7 @@ Go MCP server for the Beget Hosting API. Keep the public surface typed: do not a
 
 ## Workflow
 
-- Run `go fmt ./...`, `go vet ./...`, and `go test -race ./...` before committing.
+- Run `go fmt ./...`, `go vet ./...`, `go test -race ./...`, `golangci-lint run`, `go mod verify`, `govulncheck ./...`, `gosec -concurrency=1 ./...`, and `gitleaks dir --redact --no-banner .` before committing. `task verify` runs the non-mutating suite after formatting.
 - Commit completed changes automatically and push after verification.
 - Prefer short subjects in the form `<scope>: <change>`, matching the established `auth-svc` history.
 - Keep one coherent change in each commit. Put cleanup and follow-up fixes in separate commits when practical.

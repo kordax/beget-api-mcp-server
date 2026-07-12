@@ -125,10 +125,10 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 		return nil, fmt.Errorf("read Beget %s/%s response: %w", section, method, err)
 	}
 	if len(body) > maxResponseBytes {
-		return nil, fmt.Errorf("Beget %s/%s response exceeds %d bytes", section, method, maxResponseBytes)
+		return nil, fmt.Errorf("beget %s/%s response exceeds %d bytes", section, method, maxResponseBytes)
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("Beget %s/%s returned HTTP %d", section, method, response.StatusCode)
+		return nil, fmt.Errorf("beget %s/%s returned HTTP %d", section, method, response.StatusCode)
 	}
 
 	var result envelope
