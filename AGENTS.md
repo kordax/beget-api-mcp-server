@@ -30,5 +30,6 @@ Go MCP server for the Beget Hosting API. Keep the public surface typed: do not a
 ## Documentation
 
 - Write in a direct, human voice that sounds like the project author.
+- Write README and installation instructions for users of a public project. Do not include the maintainer's machine setup, private-repository workflow, or personal helper utilities.
 - Avoid two consecutive hyphens as punctuation. They are allowed only where command-line syntax requires them.
 - Keep English and Russian documentation aligned when behavior, setup, or tool lists change.

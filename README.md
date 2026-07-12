@@ -70,7 +70,7 @@ mkdir -p "$HOME/.local/bin"
 GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
 ```
 
-Because the repository is private, the first installation also needs GitHub authentication and a `GOPRIVATE` entry. The full guide includes those steps, the keyring check, the global MCP configuration, updating, and removal.
+The full guide covers MCP client configuration, safe credential handling, updating, and removal.
 
 ## Credentials
 
@@ -94,8 +94,6 @@ env = { BEGET_API_LOGIN = "your-login", BEGET_API_KEY = "your-api-password" }
 ```
 
 This direct configuration is universal, but it stores the key in the MCP client configuration. If the client supports protected secrets, use that feature. An external password-manager launcher is another option.
-
-`codex-keyring` is a custom utility from my local setup. It is not part of this project and is not required by the server. The installation guide keeps it only as an optional example of a secure launcher.
 
 The API password is sent to Beget in an HTTPS POST form body. It is not placed in URLs, logs, tool arguments, or tool results. Tests use fake credentials and local HTTP servers, so they never contact a real Beget account.
 

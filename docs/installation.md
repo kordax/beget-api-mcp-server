@@ -4,29 +4,15 @@ This guide installs the server once for the current user and connects it to an M
 
 ## Requirements
 
-Install these programs first:
-
-- Go 1.26.5
-- Git
-- GitHub CLI
+Install Go 1.26.5 first.
 
 Check the versions:
 
 ```bash
 go version
-git --version
-gh --version
 ```
 
 ## First installation
-
-The GitHub repository is private. Configure Git to use the existing GitHub CLI session and tell Go not to use the public module proxy for kordax repositories:
-
-```bash
-gh auth status
-gh auth setup-git
-go env -w 'GOPRIVATE=github.com/kordax/*'
-```
 
 Install the binary into the current user's executable directory:
 
@@ -85,18 +71,11 @@ Restart Codex after changing the configuration. This is only a Codex-specific re
 
 GoLand and the other current JetBrains IDEs can start local MCP servers over stdio. Open `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`, click `Add`, choose the JSON configuration option for STDIO, and set the server level to `Global`.
 
-This example keeps an existing Gortex setup and adds Beget next to it:
+Add the Beget server using this JSON configuration:
 
 ```json
 {
   "mcpServers": {
-    "gortex": {
-      "command": "gortex",
-      "args": [
-        "mcp",
-        "--proxy"
-      ]
-    },
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
       "args": ["--stdio"],
@@ -119,23 +98,14 @@ If the process does not start, open `Help | Show Log in Explorer`, enter the `mc
 
 Putting `BEGET_API_KEY` directly in a client configuration is the most compatible option, but it stores the password as plain text. Prefer a protected secret feature provided by the MCP client when one is available. A password-manager launcher that injects the environment variable only into the child process is another good option.
 
-`codex-keyring` is a custom utility from my local environment. It is not distributed with this project and is not required. My local Codex configuration uses it like this:
-
-```toml
-[mcp_servers.beget]
-command = "codex-keyring"
-args = ["run", "beget-api-key", "--", "/home/your-user/.local/bin/beget-api-mcp-server"]
-env = { BEGET_API_LOGIN = "your-beget-login" }
-```
-
-Other users should replace it with their own password manager or use the direct environment configuration.
+Secret manager commands differ between operating systems and products. Configure the chosen manager to start `beget-api-mcp-server` as a child process and inject `BEGET_API_KEY` into that process environment. Do not place the password in command-line arguments.
 
 ## Install from a local clone
 
-This path is useful while developing the server:
+This path is useful while developing the server and requires Git:
 
 ```bash
-git clone git@github.com:kordax/beget-api-mcp-server.git
+git clone https://github.com/kordax/beget-api-mcp-server.git
 cd beget-api-mcp-server
 GOBIN="$HOME/.local/bin" go install ./cmd/beget-api-mcp-server
 ```
