@@ -2,7 +2,7 @@
 
 [Документация на русском](README.ru.md)
 
-I built this local MCP server to manage a Beget hosting account from tools such as Codex without exposing the hosting password to the model. The server is written in Go, composed entirely with Uber Fx, and communicates over stdio.
+I built this local MCP server to manage a Beget hosting account from any MCP client that supports stdio. Codex is used in some examples, but the server has no dependency on Codex. It works the same way with JetBrains AI Assistant, Claude Desktop, Cursor, VS Code, and other compatible clients.
 
 I intentionally expose a small set of typed tools instead of a universal API proxy. Read operations are marked read-only. Every operation that changes hosting state requires `confirm: true` before the server sends an HTTP request.
 
@@ -49,7 +49,7 @@ go test -race ./...
 
 ## Install on the system
 
-For a permanent user-wide installation and global registration in Codex or JetBrains IDEs, follow [the installation guide](docs/installation.md).
+For a permanent user-wide installation and MCP client configuration, follow [the installation guide](docs/installation.md).
 
 The short version is:
 
@@ -67,22 +67,23 @@ Enable API access in the Beget control panel and create a dedicated API password
 - `BEGET_API_LOGIN` contains the hosting account login
 - `BEGET_API_KEY` contains the dedicated API password
 
-I do not recommend storing the API password in an MCP config. Launch the process through the configured keyring wrapper:
+The server itself only needs these variables and does not depend on a particular MCP client or secret manager:
 
 ```bash
-BEGET_API_LOGIN=your-login codex-keyring run beget-api-key -- /absolute/path/to/bin/beget-api-mcp-server
+BEGET_API_LOGIN=your-login BEGET_API_KEY=your-api-password /absolute/path/to/bin/beget-api-mcp-server
 ```
 
-The separator in this command is required by `codex-keyring`.
-
-Example Codex configuration:
+Codex configuration is shown here only as an example:
 
 ```toml
 [mcp_servers.beget]
-command = "codex-keyring"
-args = ["run", "beget-api-key", "--", "/absolute/path/to/bin/beget-api-mcp-server"]
-env = { BEGET_API_LOGIN = "your-login" }
+command = "/absolute/path/to/bin/beget-api-mcp-server"
+env = { BEGET_API_LOGIN = "your-login", BEGET_API_KEY = "your-api-password" }
 ```
+
+This direct configuration is universal, but it stores the key in the MCP client configuration. If the client supports protected secrets, use that feature. An external password-manager launcher is another option.
+
+`codex-keyring` is a custom utility from my local setup. It is not part of this project and is not required by the server. The installation guide keeps it only as an optional example of a secure launcher.
 
 The API password is sent to Beget in an HTTPS POST form body. It is not placed in URLs, logs, tool arguments, or tool results. Tests use fake credentials and local HTTP servers, so they never contact a real Beget account.
 

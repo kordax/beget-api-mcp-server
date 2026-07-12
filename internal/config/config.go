@@ -30,7 +30,7 @@ func FromEnvironment() (Config, error) {
 	}
 	apiKey, err := uos.GetEnvAs("BEGET_API_KEY", uos.MapString)
 	if err != nil {
-		return Config{}, errors.New("BEGET_API_KEY is required; launch through codex-keyring")
+		return Config{}, errors.New("BEGET_API_KEY is required")
 	}
 	baseURL := uos.GetEnvOptAs("BEGET_API_BASE_URL", uos.MapStringToTrimmed).OrElse(defaultBaseURL)
 	config := Config{

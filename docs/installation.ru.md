@@ -1,6 +1,6 @@
 # Установка в систему
 
-Эта инструкция устанавливает сервер один раз для текущего пользователя Linux и подключает его ко всем проектам Codex. Права root не нужны.
+Эта инструкция устанавливает сервер один раз для текущего пользователя и подключает его к MCP-клиенту. Codex здесь является одним из примеров. Тот же stdio-процесс может запускать JetBrains AI Assistant, Claude Desktop, Cursor, VS Code или другой совместимый клиент.
 
 ## Что понадобится
 
@@ -9,7 +9,6 @@
 - Go 1.26.5
 - Git
 - GitHub CLI
-- `codex-keyring`
 
 Проверить окружение можно так:
 
@@ -17,10 +16,7 @@
 go version
 git --version
 gh --version
-codex-keyring check beget-api-key
 ```
-
-Последняя команда только проверяет наличие alias. Пароль API она не показывает.
 
 ## Первая установка
 
@@ -45,33 +41,49 @@ GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/b
 test -x "$HOME/.local/bin/beget-api-mcp-server"
 ```
 
-Добавлять каталог в `PATH` необязательно. Ниже в конфигурации Codex используется абсолютный путь. Если хочется запускать бинарник просто по имени, можно добавить `~/.local/bin` в пользовательский `PATH`.
+Добавлять каталог в `PATH` необязательно, потому что в конфигурации MCP можно использовать абсолютный путь.
 
-## Глобальное подключение к Codex
+## Универсальный контракт MCP
 
-В файл `~/.codex/config.toml` нужно добавить:
+Сервер работает через stdio и читает две переменные окружения:
+
+- `BEGET_API_LOGIN` с логином хостинг-аккаунта
+- `BEGET_API_KEY` с отдельным паролем Hosting API
+
+Он не обращается к API Codex и не требует специальной обертки запуска. Обычный MCP-клиент с JSON-конфигурацией может запускать его так:
+
+```json
+{
+  "mcpServers": {
+    "beget": {
+      "command": "/home/your-user/.local/bin/beget-api-mcp-server",
+      "args": [],
+      "env": {
+        "BEGET_API_LOGIN": "your-beget-login",
+        "BEGET_API_KEY": "your-api-password"
+      }
+    }
+  }
+}
+```
+
+Нужно заменить `/home/your-user`, логин и пароль API. Такой формат подходит клиентам, которые используют распространенную JSON-структуру `mcpServers`.
+
+## Пример для Codex
+
+Codex использует TOML вместо JSON-структуры выше. В `~/.codex/config.toml` можно добавить:
 
 ```toml
 [mcp_servers.beget]
-command = "codex-keyring"
-args = ["run", "beget-api-key", "--", "/home/your-user/.local/bin/beget-api-mcp-server"]
-env = { BEGET_API_LOGIN = "your-beget-login" }
+command = "/home/your-user/.local/bin/beget-api-mcp-server"
+env = { BEGET_API_LOGIN = "your-beget-login", BEGET_API_KEY = "your-api-password" }
 ```
 
-Нужно заменить `/home/your-user` и `your-beget-login` своими значениями. Пароль API в этот файл записывать нельзя. Разделитель в `args` обязателен для `codex-keyring`.
+После изменения конфигурации Codex нужно перезапустить. Это только представление того же универсального контракта команды и переменных окружения в формате Codex.
 
-После изменения конфигурации Codex нужно перезапустить. Инструменты Beget станут доступны из любого проекта.
-
-## Глобальное подключение в JetBrains и GoLand
+## Пример для JetBrains и GoLand
 
 GoLand и другие актуальные JetBrains IDE умеют запускать локальные MCP-серверы через stdio. Нужно открыть `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`, нажать `Add`, выбрать JSON-конфигурацию для STDIO и установить уровень сервера `Global`.
-
-Для `codex-keyring` и MCP-бинарника лучше указать абсолютные пути. IDE, запущенная с рабочего стола, может получить другой `PATH`, чем терминал. Перед настройкой пути можно узнать так:
-
-```bash
-command -v codex-keyring
-command -v gortex
-```
 
 Этот пример оставляет существующий Gortex и добавляет рядом Beget:
 
@@ -86,28 +98,37 @@ command -v gortex
       ]
     },
     "beget": {
-      "command": "/home/your-user/.local/bin/codex-keyring",
-      "args": [
-        "run",
-        "beget-api-key",
-        "--",
-        "/home/your-user/.local/bin/beget-api-mcp-server"
-      ],
+      "command": "/home/your-user/.local/bin/beget-api-mcp-server",
+      "args": [],
       "env": {
-        "BEGET_API_LOGIN": "your-beget-login"
+        "BEGET_API_LOGIN": "your-beget-login",
+        "BEGET_API_KEY": "your-api-password"
       }
     }
   }
 }
 ```
 
-Нужно заменить `/home/your-user` и `your-beget-login` своими значениями. `BEGET_API_KEY` в JSON добавлять нельзя.
-
 После сохранения нужно нажать `OK`, затем `Apply`. В колонке статуса должно появиться успешное подключение, а в списке инструментов должны быть команды Beget. Если автоматический запуск отключен, сервер нужно включить вручную или нажать `Reconnect`.
 
 Чтобы пользовательские MCP-серверы были доступны Junie, нужно открыть `Settings | Tools | AI Assistant | Agents` и включить `Pass custom MCP servers`.
 
 Если процесс не запускается, нужно открыть `Help | Show Log in Explorer`, перейти в каталог `mcp` и посмотреть лог сервера Beget. Чаще всего у IDE, запущенной с рабочего стола, проблема оказывается в неправильном пути к бинарнику.
+
+## Хранение секрета
+
+Передача `BEGET_API_KEY` прямо в конфигурации клиента является самым совместимым вариантом, но пароль хранится открытым текстом. Если MCP-клиент умеет работать с защищенными секретами, лучше использовать эту возможность. Другой хороший вариант: внешний менеджер паролей, который передает переменную окружения только дочернему процессу.
+
+`codex-keyring` является самописной утилитой из моего локального окружения. Она не распространяется вместе с этим проектом и не является обязательной. Моя локальная конфигурация Codex использует ее так:
+
+```toml
+[mcp_servers.beget]
+command = "codex-keyring"
+args = ["run", "beget-api-key", "--", "/home/your-user/.local/bin/beget-api-mcp-server"]
+env = { BEGET_API_LOGIN = "your-beget-login" }
+```
+
+Другим пользователям нужно подставить свой менеджер паролей или использовать прямую передачу переменных окружения.
 
 ## Установка из локального клона
 
@@ -119,7 +140,7 @@ cd beget-api-mcp-server
 GOBIN="$HOME/.local/bin" go install ./cmd/beget-api-mcp-server
 ```
 
-Глобальную конфигурацию Codex менять не придется, потому что путь установленного бинарника останется тем же.
+Конфигурацию клиента менять не придется, потому что путь установленного бинарника останется тем же.
 
 ## Обновление
 
@@ -129,12 +150,12 @@ GOBIN="$HOME/.local/bin" go install ./cmd/beget-api-mcp-server
 GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
 ```
 
-После обновления нужно перезапустить Codex, чтобы он запустил новый бинарник.
+После обновления нужно перезапустить MCP-сервер или выполнить повторное подключение в клиенте.
 
 ## Удаление
 
-Из `~/.codex/config.toml` нужно убрать секцию `mcp_servers.beget`, затем удалить `~/.local/bin/beget-api-mcp-server`. Запись в keyring можно оставить, если она используется где-нибудь еще.
+Нужно убрать сервер Beget из конфигурации MCP-клиента, затем удалить `~/.local/bin/beget-api-mcp-server`.
 
 ## Про безопасность
 
-Сервер читает пароль API только из `BEGET_API_KEY`. Глобальная конфигурация запускает его через `codex-keyring`, который передает ключ только дочернему процессу. Не стоит заменять этот способ обычной переменной `env` с паролем прямо в конфигурации.
+Ключ API отправляется в Beget только внутри HTTPS POST-запроса. Сервер не помещает его в URL, логи, аргументы MCP-инструментов или результаты. Способ передачи ключа процессу выбирает MCP-клиент или используемый менеджер секретов.
