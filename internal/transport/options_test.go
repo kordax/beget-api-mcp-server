@@ -4,6 +4,7 @@
 package transport
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -61,4 +62,60 @@ func TestParseOptionsRejectsConflictsAndUnsafeHTTP(t *testing.T) {
 
 	_, err = ParseOptions(Arguments{"--sse", "--streamable-session-timeout", "1m"})
 	assert.ErrorContains(t, err, "require --streamable-http")
+}
+
+func TestCommandLineArguments(t *testing.T) {
+	original := os.Args
+	t.Cleanup(func() { os.Args = original })
+	os.Args = []string{"beget-api-mcp-server", "--stdio", "value"}
+
+	assert.Equal(t, Arguments{"--stdio", "value"}, CommandLineArguments())
+}
+
+func TestParseOptionsRejectsMalformedArguments(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		arguments Arguments
+		expected  string
+	}{
+		"unknown flag":        {Arguments{"--unknown"}, "flag provided but not defined"},
+		"positional argument": {Arguments{"unexpected"}, "unexpected positional arguments"},
+		"negative timeout": {Arguments{
+			"--streamable-http", "--streamable-session-timeout", "-1s",
+		}, "session timeout cannot be negative"},
+		"malformed address": {Arguments{
+			"--streamable-http", "--http-address", "localhost",
+		}, "invalid HTTP address"},
+		"invalid port": {Arguments{
+			"--streamable-http", "--http-address", "localhost:not-a-port",
+		}, "invalid HTTP port"},
+		"non-loopback hostname": {Arguments{
+			"--streamable-http", "--http-address", "example.com:8080",
+		}, "loopback"},
+		"root path": {Arguments{
+			"--streamable-http", "--http-path", "/",
+		}, "clean absolute path"},
+		"unclean path": {Arguments{
+			"--streamable-http", "--http-path", "/mcp/../other",
+		}, "clean absolute path"},
+		"query path": {Arguments{
+			"--streamable-http", "--http-path", "/mcp?query=true",
+		}, "query or fragment"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseOptions(testCase.arguments)
+			assert.ErrorContains(t, err, testCase.expected)
+		})
+	}
+}
+
+func TestParseOptionsAcceptsLocalhostAndCustomPath(t *testing.T) {
+	options, err := ParseOptions(Arguments{
+		"--sse",
+		"--http-address", "localhost:0",
+		"--http-path", "/events",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, ModeSSE, options.Mode)
+	assert.Equal(t, "/events", options.HTTPPath)
 }

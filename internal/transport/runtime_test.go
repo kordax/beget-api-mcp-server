@@ -5,6 +5,9 @@ package transport
 
 import (
 	"context"
+	"errors"
+	"net"
+	"net/http"
 	"testing"
 	"time"
 
@@ -20,6 +23,55 @@ func TestStreamableHTTPRuntime(t *testing.T) {
 func TestLegacySSERuntime(t *testing.T) {
 	testHTTPRuntime(t, ModeSSE)
 }
+
+func TestRuntimeGuardsAndAccessors(t *testing.T) {
+	server := mcp.NewServer(&mcp.Implementation{Name: "transport-test", Version: "test"}, nil)
+	stdio := NewRuntime(server, Options{Mode: ModeStdio})
+	require.NoError(t, stdio.Prepare())
+	assert.Empty(t, stdio.Endpoint())
+	assert.Equal(t, ModeStdio, stdio.Mode())
+	require.NoError(t, stdio.Shutdown(context.Background()))
+
+	notPrepared := NewRuntime(server, Options{Mode: ModeSSE})
+	assert.ErrorContains(t, notPrepared.Run(context.Background()), "was not prepared")
+
+	invalidAddress := NewRuntime(server, Options{Mode: ModeSSE, HTTPAddress: "127.0.0.1:-1", HTTPPath: "/sse"})
+	assert.ErrorContains(t, invalidAddress.Prepare(), "listen on")
+
+	unsupported := NewRuntime(server, Options{Mode: Mode("unsupported"), HTTPAddress: "127.0.0.1:0", HTTPPath: "/mcp"})
+	assert.ErrorContains(t, unsupported.Prepare(), "unsupported transport mode")
+	assert.Empty(t, unsupported.Endpoint())
+
+	prepared := NewRuntime(server, Options{Mode: ModeSSE, HTTPAddress: "127.0.0.1:0", HTTPPath: "/sse"})
+	require.NoError(t, prepared.Prepare())
+	assert.NotEmpty(t, prepared.Endpoint())
+	assert.ErrorContains(t, prepared.Prepare(), "already prepared")
+	require.NoError(t, prepared.Shutdown(context.Background()))
+}
+
+func TestRuntimePropagatesServeError(t *testing.T) {
+	expected := errors.New("accept failed")
+	runtime := &Runtime{
+		options:    Options{Mode: ModeSSE},
+		httpServer: &http.Server{},
+		listener:   failingListener{err: expected},
+	}
+
+	assert.ErrorIs(t, runtime.Run(context.Background()), expected)
+}
+
+type failingListener struct {
+	err error
+}
+
+func (listener failingListener) Accept() (net.Conn, error) { return nil, listener.err }
+func (failingListener) Close() error                       { return nil }
+func (failingListener) Addr() net.Addr                     { return testAddress("failure") }
+
+type testAddress string
+
+func (address testAddress) Network() string { return string(address) }
+func (address testAddress) String() string  { return string(address) }
 
 func testHTTPRuntime(t *testing.T, mode Mode) {
 	t.Helper()
@@ -44,7 +96,13 @@ func testHTTPRuntime(t *testing.T, mode Mode) {
 	client := mcp.NewClient(&mcp.Implementation{Name: "transport-test-client", Version: "test"}, nil)
 	var clientTransport mcp.Transport
 	if mode == ModeStreamableHTTP {
-		clientTransport = &mcp.StreamableClientTransport{Endpoint: runtime.Endpoint()}
+		httpTransport := &http.Transport{DisableKeepAlives: true}
+		t.Cleanup(httpTransport.CloseIdleConnections)
+		clientTransport = &mcp.StreamableClientTransport{
+			Endpoint:             runtime.Endpoint(),
+			HTTPClient:           &http.Client{Transport: httpTransport},
+			DisableStandaloneSSE: true,
+		}
 	} else {
 		clientTransport = &mcp.SSEClientTransport{Endpoint: runtime.Endpoint()}
 	}

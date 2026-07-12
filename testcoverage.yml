@@ -4,4 +4,4 @@ local-prefix: github.com/kordax/beget-api-mcp-server
 threshold:
   file: 0
   package: 0
-  total: 65
+  total: 90
