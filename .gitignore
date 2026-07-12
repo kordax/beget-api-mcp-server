@@ -5,5 +5,6 @@
 /.idea/
 /.vscode/
 /.gortex/
+/AGENTS.md
 /ROADMAP.md
 *.log
