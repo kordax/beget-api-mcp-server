@@ -47,6 +47,19 @@ go vet ./...
 go test -race ./...
 ```
 
+## Install on the system
+
+For a permanent user-wide installation and global Codex registration, follow [the installation guide](docs/installation.md).
+
+The short version is:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
+```
+
+Because the repository is private, the first installation also needs GitHub authentication and a `GOPRIVATE` entry. The full guide includes those steps, the keyring check, the global MCP configuration, updating, and removal.
+
 ## Credentials
 
 Enable API access in the Beget control panel and create a dedicated API password. The process expects two environment variables:
