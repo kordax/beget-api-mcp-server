@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Morozov (kordax) <kordaxmint@gmail.com>
+// SPDX-License-Identifier: MIT
+
 package server
 
 import (
@@ -7,14 +10,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kordax/beget-api-mcp-server/internal/beget"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"go.uber.org/fx"
 )
 
 const version = "0.1.0"
-
-type Caller interface {
-	Call(context.Context, string, string, any) (json.RawMessage, error)
-}
 
 type NoArgs struct{}
 
@@ -59,10 +60,12 @@ type APIOutput struct {
 }
 
 type service struct {
-	client Caller
+	client beget.Caller
 }
 
-func New(client Caller) *mcp.Server {
+var Module = fx.Module("mcp", fx.Provide(New))
+
+func New(client beget.Caller) *mcp.Server {
 	service := &service{client: client}
 	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: version}, nil)
 

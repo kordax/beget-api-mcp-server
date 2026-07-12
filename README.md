@@ -1,12 +1,14 @@
 # Beget API MCP Server
 
-A local stdio MCP server for the Beget Hosting API, written in Go and built on the official MCP Go SDK.
+[Документация на русском](README.ru.md)
 
-The server deliberately exposes typed tools instead of a generic raw API proxy. Read operations are annotated read-only. Every mutating tool is annotated destructive and requires `confirm: true` before any HTTP request is sent.
+I built this local MCP server to manage a Beget hosting account from tools such as Codex without exposing the hosting password to the model. The server is written in Go, composed entirely with Uber Fx, and communicates over stdio.
 
-## Tools
+I intentionally expose a small set of typed tools instead of a universal API proxy. Read operations are marked read-only. Every operation that changes hosting state requires `confirm: true` before the server sends an HTTP request.
 
-Read-only:
+## Available tools
+
+Read-only tools:
 
 - `beget_account_info`
 - `beget_list_sites`
@@ -17,39 +19,50 @@ Read-only:
 - `beget_site_load`
 - `beget_database_load`
 
-Mutating:
+Tools that change hosting state:
 
 - `beget_change_dns_records`
 - `beget_freeze_site`
 - `beget_unfreeze_site`
 
-The mutating tools require `confirm: true`. DNS updates accept the record groups documented by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
+DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
 
-## Build
+## Architecture
 
-Requires Go 1.25 or newer.
+The entry point only starts `app.Module`. Configuration, the HTTP client, the Beget adapter, the MCP server, and process lifecycle are separate Fx modules. This keeps wiring visible and lets `fx.ValidateApp` check the dependency graph in tests.
+
+The project uses:
+
+- Go 1.26 with the `go1.26.5` toolchain
+- Uber Fx 1.24.0
+- Testify 1.11.1
+- `github.com/kordax/basic-utils/v3` 3.4.0
+- the official MCP Go SDK
+
+## Build and test
 
 ```bash
 go build -o bin/beget-api-mcp-server ./cmd/beget-api-mcp-server
+go vet ./...
 go test -race ./...
 ```
 
 ## Credentials
 
-Beget Hosting API access must first be enabled in the Beget control panel with a dedicated API password.
+Enable API access in the Beget control panel and create a dedicated API password. The process expects two environment variables:
 
-The process expects:
+- `BEGET_API_LOGIN` contains the hosting account login
+- `BEGET_API_KEY` contains the dedicated API password
 
-- `BEGET_API_LOGIN`: hosting account login;
-- `BEGET_API_KEY`: dedicated Beget Hosting API password.
-
-Do not store the API password in a config file. Launch the server through the configured keyring wrapper:
+I do not recommend storing the API password in an MCP config. Launch the process through the configured keyring wrapper:
 
 ```bash
 BEGET_API_LOGIN=your-login codex-keyring run beget-api-key -- /absolute/path/to/bin/beget-api-mcp-server
 ```
 
-Example MCP configuration:
+The separator in this command is required by `codex-keyring`.
+
+Example Codex configuration:
 
 ```toml
 [mcp_servers.beget]
@@ -58,24 +71,20 @@ args = ["run", "beget-api-key", "--", "/absolute/path/to/bin/beget-api-mcp-serve
 env = { BEGET_API_LOGIN = "your-login" }
 ```
 
-The key is sent to Beget in an HTTPS POST form body. It is never put in the request URL or tool output. The server logs only startup/configuration failures without credential values.
-
-## Development
-
-```bash
-go fmt ./...
-go vet ./...
-go test -race ./...
-```
-
-Tests use fake credentials and local `httptest` servers; they never call Beget.
+The API password is sent to Beget in an HTTPS POST form body. It is not placed in URLs, logs, tool arguments, or tool results. Tests use fake credentials and local HTTP servers, so they never contact a real Beget account.
 
 ## API scope
 
-This project currently targets the classic Beget Hosting API at `https://api.beget.com/api`. Beget Cloud uses a separate JWT API and should be implemented as a separate adapter rather than mixed into these tools.
+This version targets the classic Beget Hosting API at `https://api.beget.com/api`. Beget Cloud uses a different JWT API. I plan to keep that integration in a separate adapter so that credentials and tool contracts do not get mixed together.
 
 Official references:
 
 - [Beget API principles](https://beget.com/ru/kb/api/obshhij-princzip-raboty-s-api)
 - [Beget DNS API](https://beget.com/ru/kb/api/funkczii-upravleniya-dns)
 - [Official MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk)
+
+## Author and license
+
+Created by Dmitry Morozov, also known as kordax. Contact: `kordaxmint@gmail.com`.
+
+The project is distributed under the MIT License. See [LICENSE](LICENSE).

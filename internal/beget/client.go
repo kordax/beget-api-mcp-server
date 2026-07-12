@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Morozov (kordax) <kordaxmint@gmail.com>
+// SPDX-License-Identifier: MIT
+
 package beget
 
 import (
@@ -10,6 +13,9 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/kordax/beget-api-mcp-server/internal/config"
+	"go.uber.org/fx"
 )
 
 const maxResponseBytes = 4 << 20
@@ -20,12 +26,23 @@ type HTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
+type Caller interface {
+	Call(context.Context, string, string, any) (json.RawMessage, error)
+}
+
 type Client struct {
 	baseURL string
 	login   string
 	apiKey  string
 	http    HTTPClient
 }
+
+var Module = fx.Module("beget",
+	fx.Provide(
+		NewHTTPClient,
+		fx.Annotate(NewFromConfig, fx.As(new(Caller))),
+	),
+)
 
 type envelope struct {
 	Status    string          `json:"status"`
@@ -57,6 +74,14 @@ func NewClient(baseURL, login, apiKey string, httpClient HTTPClient) (*Client, e
 		httpClient = http.DefaultClient
 	}
 	return &Client{baseURL: baseURL, login: login, apiKey: apiKey, http: httpClient}, nil
+}
+
+func NewHTTPClient(configuration config.Config) *http.Client {
+	return &http.Client{Timeout: configuration.Timeout}
+}
+
+func NewFromConfig(configuration config.Config, httpClient *http.Client) (*Client, error) {
+	return NewClient(configuration.BaseURL, configuration.Login, configuration.APIKey, httpClient)
 }
 
 func (c *Client) Call(ctx context.Context, section, method string, input any) (json.RawMessage, error) {

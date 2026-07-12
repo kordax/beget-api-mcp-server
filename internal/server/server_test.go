@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Dmitry Morozov (kordax) <kordaxmint@gmail.com>
+// SPDX-License-Identifier: MIT
+
 package server
 
 import (
@@ -6,7 +9,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/kordax/beget-api-mcp-server/internal/beget"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeCaller struct {
@@ -31,23 +37,19 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	defer closeSessions()
 
 	result, err := session.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("ListTools: %v", err)
-	}
+	require.NoError(t, err)
 	tools := make(map[string]*mcp.Tool, len(result.Tools))
 	for _, tool := range result.Tools {
 		tools[tool.Name] = tool
 	}
-	if len(tools) != 11 {
-		t.Fatalf("expected 11 tools, got %d", len(tools))
-	}
-	if !tools["beget_list_sites"].Annotations.ReadOnlyHint {
-		t.Fatal("list tool must be read-only")
-	}
+	assert.Len(t, tools, 11)
+	require.Contains(t, tools, "beget_list_sites")
+	assert.True(t, tools["beget_list_sites"].Annotations.ReadOnlyHint)
+	require.Contains(t, tools, "beget_change_dns_records")
 	change := tools["beget_change_dns_records"].Annotations
-	if change.ReadOnlyHint || change.DestructiveHint == nil || !*change.DestructiveHint {
-		t.Fatal("DNS mutation must be marked destructive")
-	}
+	assert.False(t, change.ReadOnlyHint)
+	require.NotNil(t, change.DestructiveHint)
+	assert.True(t, *change.DestructiveHint)
 }
 
 func TestMutationRequiresConfirmation(t *testing.T) {
@@ -58,15 +60,10 @@ func TestMutationRequiresConfirmation(t *testing.T) {
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "beget_unfreeze_site", Arguments: map[string]any{"id": 42, "confirm": false},
 	})
-	if err != nil {
-		t.Fatalf("CallTool: %v", err)
-	}
-	if !result.IsError {
-		t.Fatal("unconfirmed mutation should return a tool error")
-	}
-	if caller.calls != 0 {
-		t.Fatal("unconfirmed mutation reached the Beget client")
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsError)
+	assert.Zero(t, caller.calls, "unconfirmed mutation reached the Beget client")
 }
 
 func TestReadToolCallsExpectedEndpoint(t *testing.T) {
@@ -75,40 +72,29 @@ func TestReadToolCallsExpectedEndpoint(t *testing.T) {
 	defer closeSessions()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_list_domains", Arguments: map[string]any{}})
-	if err != nil || result.IsError {
-		t.Fatalf("CallTool failed: result=%+v err=%v", result, err)
-	}
-	if caller.calls != 1 || caller.section != "domain" || caller.method != "getList" {
-		t.Fatalf("unexpected endpoint: calls=%d %s/%s", caller.calls, caller.section, caller.method)
-	}
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Equal(t, 1, caller.calls)
+	assert.Equal(t, "domain", caller.section)
+	assert.Equal(t, "getList", caller.method)
 }
 
 func TestValidateDNSRecords(t *testing.T) {
-	if err := validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}}); err != nil {
-		t.Fatalf("valid A record rejected: %v", err)
-	}
-	if err := validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}, CNAME: []DNSRecord{{Value: "example.com"}}}); err == nil {
-		t.Fatal("mixed record groups should fail")
-	}
-	if err := validateDNSRecords(DNSRecords{DNSIP: []DNSRecord{{Value: "192.0.2.53"}}}); err == nil {
-		t.Fatal("DNS_IP without a DNS server should fail")
-	}
+	assert.NoError(t, validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}}))
+	assert.Error(t, validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}, CNAME: []DNSRecord{{Value: "example.com"}}}))
+	assert.Error(t, validateDNSRecords(DNSRecords{DNSIP: []DNSRecord{{Value: "192.0.2.53"}}}))
 }
 
-func connectTestClient(t *testing.T, caller Caller) (*mcp.ClientSession, func()) {
+func connectTestClient(t *testing.T, caller beget.Caller) (*mcp.ClientSession, func()) {
 	t.Helper()
 	ctx := context.Background()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
 	serverSession, err := New(caller).Connect(ctx, serverTransport, nil)
-	if err != nil {
-		t.Fatalf("connect server: %v", err)
-	}
+	require.NoError(t, err)
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
 	clientSession, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		_ = serverSession.Close()
-		t.Fatalf("connect client: %v", err)
-	}
+	require.NoError(t, err)
 	return clientSession, func() {
 		_ = clientSession.Close()
 		_ = serverSession.Close()
