@@ -1,0 +1,8 @@
+/bin/
+/dist/
+/coverage.out
+/.env
+/.idea/
+/.vscode/
+/.gortex/
+*.log
