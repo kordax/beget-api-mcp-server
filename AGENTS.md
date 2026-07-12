@@ -21,7 +21,11 @@ Go MCP server for the Beget Hosting API. Keep the public surface typed: do not a
 ## Workflow
 
 - Run `go fmt ./...`, `go vet ./...`, and `go test -race ./...` before committing.
-- Commit completed changes automatically using lowercase subjects in the form `<module> <what was done>` and push after verification.
+- Commit completed changes automatically and push after verification.
+- Prefer short subjects in the form `<scope>: <change>`, matching the established `auth-svc` history.
+- Keep one coherent change in each commit. Put cleanup and follow-up fixes in separate commits when practical.
+- Omit the commit body for self-explanatory changes. Add it only for important context that is not clear from the diff.
+- Add a task prefix such as `CORE-123:` only when the repository or current task actually has that identifier.
 
 ## Documentation
 
