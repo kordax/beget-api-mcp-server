@@ -66,7 +66,7 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	for _, tool := range result.Tools {
 		tools[tool.Name] = tool
 	}
-	assert.Len(t, tools, 12)
+	assert.Len(t, tools, 66)
 	require.Contains(t, tools, "beget_auth_status")
 	require.Contains(t, tools, "beget_list_sites")
 	assert.True(t, tools["beget_list_sites"].Annotations.ReadOnlyHint)
@@ -75,6 +75,34 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	assert.False(t, change.ReadOnlyHint)
 	require.NotNil(t, change.DestructiveHint)
 	assert.True(t, *change.DestructiveHint)
+	require.Contains(t, tools, "beget_change_mailbox_password")
+	mailPassword := tools["beget_change_mailbox_password"].Annotations
+	require.NotNil(t, mailPassword.DestructiveHint)
+	assert.True(t, *mailPassword.DestructiveHint)
+}
+
+func TestPublishedOperationsAreRegisteredWithMatchingSafety(t *testing.T) {
+	client := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, client)
+	defer closeSessions()
+
+	result, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	tools := make(map[string]*mcp.Tool, len(result.Tools))
+	for _, tool := range result.Tools {
+		tools[tool.Name] = tool
+	}
+
+	for _, spec := range publishedOperations {
+		tool, ok := tools[spec.name]
+		require.Truef(t, ok, "%s is not registered", spec.name)
+		if spec.mutating {
+			require.NotNilf(t, tool.Annotations.DestructiveHint, "%s must be destructive", spec.name)
+			assert.True(t, *tool.Annotations.DestructiveHint, spec.name)
+			continue
+		}
+		assert.True(t, tool.Annotations.ReadOnlyHint, spec.name)
+	}
 }
 
 func TestAuthenticationStatusDoesNotCallBeget(t *testing.T) {
@@ -130,6 +158,39 @@ func TestMutationRequiresConfirmation(t *testing.T) {
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "beget_unfreeze_site", Arguments: map[string]any{"id": 42, "confirm": false},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsError)
+	assert.Zero(t, caller.calls, "unconfirmed mutation reached the Beget client")
+}
+
+func TestMailboxPasswordChangeUsesMailEndpoint(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_change_mailbox_password", Arguments: map[string]any{
+			"domain": "example.com", "mailbox": "admin", "mailbox_password": "new-password", "confirm": true,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Equal(t, "mail", caller.section)
+	assert.Equal(t, "changeMailboxPassword", caller.method)
+	require.IsType(t, OperationInput{}, caller.input)
+	assert.False(t, caller.input.(OperationInput).Confirm, "confirm must not reach Beget")
+}
+
+func TestPublishedMutationRequiresConfirmation(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_change_mailbox_password", Arguments: map[string]any{"domain": "example.com", "mailbox": "admin"},
 	})
 	require.NoError(t, err)
 	require.NotNil(t, result)

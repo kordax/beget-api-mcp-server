@@ -18,20 +18,14 @@ I intentionally expose a small set of typed tools instead of a universal API pro
 
 Read-only tools:
 
-- `beget_account_info`
-- `beget_list_sites`
-- `beget_list_domains`
-- `beget_get_dns_records`
-- `beget_list_cron_jobs`
-- `beget_list_backups`
-- `beget_site_load`
-- `beget_database_load`
+- Account, DNS, domain, FTP, MySQL, site, Cron, backup, mail, and load-statistics queries.
+- For example: `beget_list_mailboxes`, `beget_list_ftp_accounts`, `beget_list_mysql_databases`, `beget_list_file_backups`, and `beget_list_cron_jobs`.
 
 Tools that change hosting state:
 
-- `beget_change_dns_records`
-- `beget_freeze_site`
-- `beget_unfreeze_site`
+- All documented mutations in those sections, including `beget_change_mailbox_password`, mailbox creation and forwarding, FTP and MySQL password changes, site and domain management, backup restores, and Cron changes.
+
+The server exposes 66 typed tools in total. Each tool has a fixed Beget endpoint and typed documented parameters: it is not a universal API proxy. Every state-changing tool is marked destructive and requires `confirm: true`.
 
 DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
 
