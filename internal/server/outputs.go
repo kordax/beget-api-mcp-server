@@ -37,8 +37,15 @@ type ToolOutput[Result any] struct {
 }
 
 type MutationResult[Details any] struct {
-	Changed bool     `json:"changed" jsonschema:"whether Beget accepted and applied or queued the requested change"`
-	Details *Details `json:"details,omitempty" jsonschema:"typed provider result when Beget returned one"`
+	Changed bool              `json:"changed" jsonschema:"whether Beget accepted and applied or queued the requested change"`
+	DryRun  *DryRunAssessment `json:"dry_run,omitempty" jsonschema:"local-only dry-run assessment"`
+	Details *Details          `json:"details,omitempty" jsonschema:"typed provider result when Beget returned one"`
+}
+
+type DryRunAssessment struct {
+	Scope                        string `json:"scope"`
+	Status                       string `json:"status"`
+	ProviderAcceptanceGuaranteed bool   `json:"provider_acceptance_guaranteed"`
 }
 
 type LosslessFields struct {

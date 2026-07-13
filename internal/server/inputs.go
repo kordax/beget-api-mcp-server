@@ -17,11 +17,16 @@ import (
 )
 
 type Confirmation struct {
-	Confirm bool `json:"confirm" jsonschema:"must be true only after the user explicitly approves this exact change"`
+	Confirm bool `json:"confirm" jsonschema:"must be true only after the user explicitly approves this exact change; use false with dry_run=true before approval"`
+	DryRun  bool `json:"dry_run,omitempty" jsonschema:"true runs local checks without Beget; use with confirm=false"`
 }
 
 func (input Confirmation) confirmed() bool {
 	return input.Confirm
+}
+
+func (input Confirmation) dryRun() bool {
+	return input.DryRun
 }
 
 type ToggleSSHInput struct {

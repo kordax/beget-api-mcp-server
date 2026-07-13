@@ -16,20 +16,22 @@ import (
 
 type operationSpec struct {
 	name, description, section, method string
-	mutating                           bool
+	mutating, destructive, idempotent  bool
 	register                           func(*mcp.Server, *service)
 }
 
 const (
-	authStatusDescription = "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."
-	getDNSDescription     = "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."
-	changeDNSDescription  = "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval."
-	freezeSiteDescription = "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
-	unfreezeDescription   = "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
+	authStatusDescription         = "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."
+	serverCapabilitiesDescription = "Read server version and supported Beget methods, mutations, dry-run, confirmation, idempotency, secret-reference, and rotation capabilities. This is local metadata and never reveals credential configuration."
+	getDNSDescription             = "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."
+	changeDNSDescription          = "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval."
+	freezeSiteDescription         = "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
+	unfreezeDescription           = "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
 )
 
 type confirmedInput interface {
 	confirmed() bool
+	dryRun() bool
 }
 
 type inputValidator interface {
@@ -50,6 +52,7 @@ func (s *service) addOperations(server *mcp.Server) {
 func readOperation[Input, Result any](name, description, section, method string, rules ...schemaRule) operationSpec {
 	return operationSpec{
 		name: name, description: description, section: section, method: method,
+		idempotent: true,
 		register: func(server *mcp.Server, service *service) {
 			addToolWithSchema(server, readTool(name, description), func(ctx context.Context, _ *mcp.CallToolRequest, input Input) (*mcp.CallToolResult, ToolOutput[Result], error) {
 				if err := validateOperationInput(input); err != nil {
@@ -64,16 +67,22 @@ func readOperation[Input, Result any](name, description, section, method string,
 func mutationOperation[Input confirmedInput, Details any](name, description, section, method string, destructive, idempotent bool, rules ...schemaRule) operationSpec {
 	return operationSpec{
 		name: name, description: description, section: section, method: method,
-		mutating: true,
+		mutating: true, destructive: destructive, idempotent: idempotent,
 		register: func(server *mcp.Server, service *service) {
 			addToolWithSchema(server, mutatingTool(name, description, destructive, idempotent), func(ctx context.Context, _ *mcp.CallToolRequest, input Input) (*mcp.CallToolResult, ToolOutput[MutationResult[Details]], error) {
+				if input.dryRun() {
+					if err := validateOperationInput(input); err != nil {
+						return mutationValidationFailure[Details](err)
+					}
+					return localMutationDryRun[Details](service, input.confirmed())
+				}
 				if !input.confirmed() {
 					return mutationConfirmationFailure[Details](name)
 				}
 				if err := validateOperationInput(input); err != nil {
 					return mutationValidationFailure[Details](err)
 				}
-				parameters, err := withoutConfirmation(input)
+				parameters, err := withoutMutationControl(input)
 				if err != nil {
 					return mutationValidationFailure[Details](fmt.Errorf("prepare %s parameters: %w", name, err))
 				}
@@ -83,10 +92,13 @@ func mutationOperation[Input confirmedInput, Details any](name, description, sec
 	}
 }
 
-func customOperation(name, description, section, method string, mutating bool, register func(*mcp.Server, *service)) operationSpec {
+func customOperation(name, description, section, method string, mutating, destructive, idempotent bool, register func(*mcp.Server, *service, string)) operationSpec {
 	return operationSpec{
 		name: name, description: description, section: section, method: method,
-		mutating: mutating, register: register,
+		mutating: mutating, destructive: destructive, idempotent: idempotent,
+		register: func(server *mcp.Server, service *service) {
+			register(server, service, description)
+		},
 	}
 }
 
@@ -224,7 +236,7 @@ func validateOperationInput(input any) error {
 	return validator.validate()
 }
 
-func withoutConfirmation(input any) (json.RawMessage, error) {
+func withoutMutationControl(input any) (json.RawMessage, error) {
 	encoded, err := json.Marshal(input)
 	if err != nil {
 		return nil, err
@@ -234,16 +246,42 @@ func withoutConfirmation(input any) (json.RawMessage, error) {
 		return nil, err
 	}
 	delete(parameters, "confirm")
+	delete(parameters, "dry_run")
 	return json.Marshal(parameters)
+}
+
+func localMutationDryRun[Details any](service *service, confirmed bool) (*mcp.CallToolResult, ToolOutput[MutationResult[Details]], error) {
+	configured := service.client.AuthenticationStatus().Configured
+	status := "ready"
+	switch {
+	case !configured && !confirmed:
+		status = "credentials_and_confirmation_required"
+	case !configured:
+		status = "credentials_required"
+	case !confirmed:
+		status = "confirmation_required"
+	}
+	assessment := DryRunAssessment{
+		Scope: "local", Status: status, ProviderAcceptanceGuaranteed: false,
+	}
+	return nil, successfulOutput(MutationResult[Details]{Changed: false, DryRun: &assessment}), nil
 }
 
 var operationCatalog = []operationSpec{
 	customOperation(
 		"beget_auth_status",
 		authStatusDescription,
-		"local", "authStatus", false,
-		func(server *mcp.Server, service *service) {
-			addToolWithSchema(server, localReadTool("beget_auth_status", authStatusDescription), service.authenticationStatus)
+		"local", "authStatus", false, false, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, localReadTool("beget_auth_status", description), service.authenticationStatus)
+		},
+	),
+	customOperation(
+		"beget_server_capabilities",
+		serverCapabilitiesDescription,
+		"local", "serverCapabilities", false, false, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, localReadTool("beget_server_capabilities", description), service.serverCapabilities)
 		},
 	),
 	readOperation[NoArgs, AccountInfoResult](
@@ -275,17 +313,17 @@ var operationCatalog = []operationSpec{
 	customOperation(
 		"beget_get_dns_records",
 		getDNSDescription,
-		"dns", "getData", false,
-		func(server *mcp.Server, service *service) {
-			addToolWithSchema(server, readTool("beget_get_dns_records", getDNSDescription), service.getDNSRecords)
+		"dns", "getData", false, false, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, readTool("beget_get_dns_records", description), service.getDNSRecords)
 		},
 	),
 	customOperation(
 		"beget_change_dns_records",
 		changeDNSDescription,
-		"dns", "changeRecords", true,
-		func(server *mcp.Server, service *service) {
-			addToolWithSchema(server, mutatingTool("beget_change_dns_records", changeDNSDescription, true, true), service.changeDNSRecords)
+		"dns", "changeRecords", true, true, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, mutatingTool("beget_change_dns_records", description, true, true), service.changeDNSRecords)
 		},
 	),
 	readOperation[NoArgs, []FTPAccount]("beget_list_ftp_accounts", "List additional FTP accounts with their full logins and home directories. Use the suffix portion for FTP mutations.", "ftp", "getList"),
@@ -306,17 +344,17 @@ var operationCatalog = []operationSpec{
 	customOperation(
 		"beget_freeze_site",
 		freezeSiteDescription,
-		"site", "freeze", true,
-		func(server *mcp.Server, service *service) {
-			addToolWithSchema(server, mutatingTool("beget_freeze_site", freezeSiteDescription, true, true), service.freezeSite)
+		"site", "freeze", true, true, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, mutatingTool("beget_freeze_site", description, true, true), service.freezeSite)
 		},
 	),
 	customOperation(
 		"beget_unfreeze_site",
 		unfreezeDescription,
-		"site", "unfreeze", true,
-		func(server *mcp.Server, service *service) {
-			addToolWithSchema(server, mutatingTool("beget_unfreeze_site", unfreezeDescription, true, true), service.unfreezeSite)
+		"site", "unfreeze", true, true, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, mutatingTool("beget_unfreeze_site", description, true, true), service.unfreezeSite)
 		},
 	),
 	readOperation[SiteStatusInput, APIBool]("beget_is_site_frozen", "Read whether files for site_id from beget_list_sites are currently frozen against writes.", "site", "isSiteFrozen"),

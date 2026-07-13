@@ -14,17 +14,17 @@ This diagnostic baseline was recorded on 2026-07-13 with Go 1.26.5 on Linux amd6
 
 | Benchmark | Time per operation | Bytes per operation | Allocations |
 | --- | ---: | ---: | ---: |
-| Server startup | 12.93 ms | 7,096,877 | 192,975 |
-| MCP initialize | 123.6 µs | 308,325 | 215 |
-| MCP `tools/list` | 9.510 ms | 6,621,932 | 40,769 |
-| MCP capability resource | 205.7 µs | 228,522 | 108 |
-| Largest Cron input schema | 6.541 µs | 13,374 | 44 |
-| Nested directives input schema | 6.013 µs | 13,756 | 55 |
-| MCP tool call | 106.5 µs | 340,383 | 256 |
-| Concurrent MCP tool calls | 63.14 µs | 340,472 | 258 |
-| Local HTTP round trip | 27.37 µs | 10,302 | 116 |
-| Concurrent local HTTP round trips | 32.65 µs | 36,057 | 146 |
+| Server startup | 14.14 ms | 8,384,961 | 229,131 |
+| MCP initialize | 123.3 µs | 309,996 | 216 |
+| MCP `tools/list` | 11.19 ms | 7,563,809 | 48,158 |
+| MCP capability resource | 121.6 µs | 228,727 | 109 |
+| Largest Cron input schema | 7.715 µs | 15,072 | 52 |
+| Nested directives input schema | 7.050 µs | 14,976 | 60 |
+| MCP tool call | 96.50 µs | 340,272 | 256 |
+| Concurrent MCP tool calls | 60.36 µs | 340,332 | 258 |
+| Local HTTP round trip | 26.54 µs | 10,246 | 116 |
+| Concurrent local HTTP round trips | 35.92 µs | 38,120 | 147 |
 
-The `tools/list` response contained all 66 tools and occupied 144,736 serialized bytes, including operation-specific input and output schemas. The optional capability resource occupied 4,729 serialized bytes, about 31 times less, and is read only when routing remains unclear. Treat the table as a comparison point for profiling and regressions, not as a promise for other machines.
+The `tools/list` response contained all 67 tools and occupied 167,349 serialized bytes, including operation-specific input and output schemas and the dry-run result contract for every mutation. The optional capability resource occupied 4,759 serialized bytes, about 35 times less, and is read only when routing remains unclear. Treat the table as a comparison point for profiling and regressions, not as a promise for other machines.
 
 CI intentionally has no latency or allocation gate yet. These values are diagnostic until repeated runs across stable runners establish normal variance and a defensible tolerance. Deterministic contract checks such as tool count and serialized catalog size remain regular tests; a timing gate should be added only after the baseline is demonstrably stable.

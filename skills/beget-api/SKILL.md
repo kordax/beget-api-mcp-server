@@ -42,6 +42,14 @@ Choose the narrowest matching category:
 
 Use list tools to discover current resources and identifiers. Similar identifiers are not interchangeable: a site ID, domain ID, subdomain ID, Cron row number, backup ID, database suffix, and FTP suffix belong to different operations.
 
+Call `beget_server_capabilities` only when the user or workflow needs machine-readable server features or the exact supported Beget method list. It is local metadata and intentionally does not report whether credentials are configured; use `beget_auth_status` for that separate question.
+
+## Dry runs
+
+Every mutating tool accepts `dry_run`. Use `dry_run: true` with `confirm: false` when local validation is useful before asking for approval. A successful dry run returns `changed: false` and a `dry_run` assessment covering the input, configured-credentials prerequisite, and confirmation prerequisite.
+
+Dry-run scope is `local`: it sends no request to Beget, does not test remote permissions or undocumented provider constraints, and never guarantees that Beget will accept the later mutation. Treat `status: ready` only as readiness for a real confirmed call; other stable statuses name missing credentials, confirmation, or both. Do not run dry-run routinely when the schema and prerequisites are already clear, and never treat it as user approval.
+
 ## Read before write
 
 For every hosting change:

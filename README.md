@@ -25,7 +25,7 @@ Tools that change hosting state:
 
 - All documented mutations in those sections, including `beget_change_mailbox_password`, mailbox creation and forwarding, FTP and MySQL password changes, site and domain management, backup restores, and Cron changes.
 
-The server exposes 66 typed tools in total. Each tool has a fixed Beget endpoint and typed documented parameters: it is not a universal API proxy. Every state-changing tool declares accurate destructive and idempotent hints and requires `confirm: true`.
+The server exposes 67 typed tools in total: 65 fixed Beget endpoints plus the local `beget_auth_status` and `beget_server_capabilities` tools. It is not a universal API proxy. Every state-changing tool declares accurate destructive and idempotent hints and requires `confirm: true` for a real provider call.
 
 Each input schema contains only the parameters accepted by its Beget method. Required fields, identifiers, enums, ranges, paths, Cron expressions, and incompatible values are checked before an HTTP request. Password fields for managed FTP, MySQL, and mail resources are marked write-only and are never part of result summaries.
 
@@ -38,6 +38,10 @@ Every MCP client receives a short safe-operation workflow during initialization:
 Clients that still cannot choose a category from `tools/list` may read the optional `beget://capabilities` resource. It is a compact local index that groups inspect and change tools by scenario and links each category to the official Beget documentation. Reading it never calls Beget and is not a required step before normal operations. Critical safety rules remain in initialization instructions and tool schemas for clients that do not expose MCP resources.
 
 The operation catalog is the single source for tool registration, endpoint metadata, contract tests, and the capability resource. It was checked against the ten current sections of the official Beget hosting API documentation. The server currently has no compound tools. A compound operation should be added only after a frequent multi-call scenario is demonstrated; it must remain typed, expose its steps, and retain mutation annotations and confirmation instead of hiding a change behind a read-only name.
+
+`beget_server_capabilities` returns the running version, all supported Beget section/method pairs, mutation and per-method idempotency metadata, and explicit support states for dry-run, confirmation tokens, secret references, and staged rotation. It is local and never reports whether credentials are configured or where they are stored.
+
+Every mutation accepts optional `dry_run`. With `dry_run: true` and `confirm: false`, the server validates the schema and known local constraints, checks whether server credentials and confirmation prerequisites are ready, returns `changed: false`, and sends no request to Beget. The result always identifies its scope as `local`; it does not test remote permissions or undocumented provider constraints and never guarantees provider acceptance. A real mutation still requires explicit approval and `confirm: true`.
 
 An ordinary MCP tool call makes at most one Beget HTTP request. The server does not add hidden preflight reads: any read-before-write or verification step remains an explicit agent action. The shared HTTP client reuses connections, propagates MCP cancellation through `context`, and rejects responses larger than 4 MiB without buffering the remainder.
 
@@ -92,7 +96,7 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 90.6% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 90.7% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 Run `task benchmark` to measure server startup, MCP initialization, `tools/list`, the capability resource, schema generation, tool calls, and local fake-server HTTP round trips. The command reports time, bytes, and allocations without contacting Beget. See the [performance baseline](docs/performance.md) for the current reference run.
 

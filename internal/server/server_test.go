@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
+	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
 	"github.com/kordax/beget-api-mcp-server/internal/passwordpolicy"
 	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -31,6 +32,7 @@ type fakeCaller struct {
 	input   any
 	answer  json.RawMessage
 	err     error
+	auth    *beget.AuthenticationStatus
 }
 
 func (f *fakeCaller) Call(_ context.Context, section, method string, input any) (json.RawMessage, error) {
@@ -69,7 +71,10 @@ func fakeAnswer(section, method string) json.RawMessage {
 	}
 }
 
-func (*fakeCaller) AuthenticationStatus() beget.AuthenticationStatus {
+func (f *fakeCaller) AuthenticationStatus() beget.AuthenticationStatus {
+	if f.auth != nil {
+		return *f.auth
+	}
 	return beget.AuthenticationStatus{Configured: true, Source: "test", Message: "configured for tests"}
 }
 
@@ -108,8 +113,9 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	for _, tool := range result.Tools {
 		tools[tool.Name] = tool
 	}
-	assert.Len(t, tools, 66)
+	assert.Len(t, tools, 67)
 	require.Contains(t, tools, "beget_auth_status")
+	require.Contains(t, tools, "beget_server_capabilities")
 	require.Contains(t, tools, "beget_list_sites")
 	assert.True(t, tools["beget_list_sites"].Annotations.ReadOnlyHint)
 	require.Contains(t, tools, "beget_change_dns_records")
@@ -136,6 +142,9 @@ func TestInitializeProvidesUniversalAgentInstructions(t *testing.T) {
 	result := session.InitializeResult()
 	require.NotNil(t, result)
 	assert.Contains(t, result.Instructions, "beget_auth_status")
+	assert.Contains(t, result.Instructions, "dry_run=true")
+	assert.Contains(t, result.Instructions, "no Beget request")
+	assert.Contains(t, result.Instructions, "never guarantees provider acceptance")
 	assert.Contains(t, result.Instructions, "Never guess identifiers")
 	assert.Contains(t, result.Instructions, "confirm=true")
 	assert.Contains(t, result.Instructions, "result.changed")
@@ -159,11 +168,11 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 
 	assertToolContract(t, tools["beget_account_info"], nil, nil)
 	assertToolContract(t, tools["beget_add_cron_job"],
-		[]string{"command", "confirm", "days", "hours", "minutes", "months", "weekdays"},
+		[]string{"command", "confirm", "days", "dry_run", "hours", "minutes", "months", "weekdays"},
 		[]string{"command", "confirm", "days", "hours", "minutes", "months", "weekdays"},
 	)
 	assertToolContract(t, tools["beget_add_ftp_account"],
-		[]string{"confirm", "homedir", "password", "suffix"},
+		[]string{"confirm", "dry_run", "homedir", "password", "suffix"},
 		[]string{"confirm", "homedir", "password", "suffix"},
 	)
 	ftpProperties := schemaProperties(t, inputSchemaMap(t, tools["beget_add_ftp_account"]))
@@ -179,11 +188,11 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 	assert.Contains(t, mailPasswordSchema["description"], "at least one letter, one digit, and one symbol")
 	assert.Equal(t, true, mailPasswordSchema["writeOnly"])
 	assertToolContract(t, tools["beget_change_mailbox_settings"],
-		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
+		[]string{"confirm", "domain", "dry_run", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
 		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
 	)
 	assertToolContract(t, tools["beget_add_domain_directives"],
-		[]string{"confirm", "directives_list", "full_fqdn"},
+		[]string{"confirm", "directives_list", "dry_run", "full_fqdn"},
 		[]string{"confirm", "directives_list", "full_fqdn"},
 	)
 	assertToolContract(t, tools["beget_list_backup_files"],
@@ -197,7 +206,7 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 		for _, forbidden := range []string{"api_key", "passwd", "bearer_token", "http_token", "master_password"} {
 			assert.NotContainsf(t, properties, forbidden, "%s must not accept credential field %s", tool.Name, forbidden)
 		}
-		assert.LessOrEqualf(t, len(properties), 8, "%s exposes too many input properties", tool.Name)
+		assert.LessOrEqualf(t, len(properties), 9, "%s exposes too many input properties", tool.Name)
 	}
 }
 
@@ -209,10 +218,10 @@ func TestToolContractSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	encoded, err := json.Marshal(result.Tools)
 	require.NoError(t, err)
-	assert.Len(t, result.Tools, 66)
-	assert.LessOrEqual(t, len(encoded), 150000, "typed input and output contracts must remain smaller than the 166376-byte untyped baseline")
+	assert.Len(t, result.Tools, 67)
+	assert.LessOrEqual(t, len(encoded), 170000, "typed contracts must remain compact after adding explicit dry-run results")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "466604c54e0f447098b383c6ea74662b3ab2cd806337cb2ff1bc9302f411ccc2", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "44bde661bdbc408650fd72a8f310c94c4044adeee71805e0a7a733e216b06d34", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
@@ -285,25 +294,26 @@ func TestOperationCatalogLinksOfficialDocumentationAndDoesNotHideMutations(t *te
 			assert.NotRegexp(t, `^beget_(get|list|is)_`, operation.name, "a mutation must not look read-only")
 		}
 	}
-	assert.Len(t, seenNames, 66)
+	assert.Len(t, seenNames, 67)
 }
 
 func TestOperationCatalogSnapshot(t *testing.T) {
 	type contract struct {
 		Name, Description, Section, Method string
-		Mutating                           bool
+		Mutating, Destructive, Idempotent  bool
 	}
 	contracts := make([]contract, 0, len(operationCatalog))
 	for _, operation := range operationCatalog {
 		contracts = append(contracts, contract{
 			Name: operation.name, Description: operation.description,
-			Section: operation.section, Method: operation.method, Mutating: operation.mutating,
+			Section: operation.section, Method: operation.method,
+			Mutating: operation.mutating, Destructive: operation.destructive, Idempotent: operation.idempotent,
 		})
 	}
 	encoded, err := json.Marshal(contracts)
 	require.NoError(t, err)
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "0a7df3f8709a1524579af8c448b0298c8f21d4afadfb1705da35f03741044709", actual, "intentional operation catalog changes require updating this snapshot")
+	assert.Equal(t, "4e12a730186c6e776aa62906b47ccf5a03087883f9eedbb9534208b4ffd613d1", actual, "intentional operation catalog changes require updating this snapshot")
 }
 
 func TestToolsExposeTypedOutputContracts(t *testing.T) {
@@ -323,6 +333,7 @@ func TestToolsExposeTypedOutputContracts(t *testing.T) {
 	mutationResult := schemaProperties(t, outputSchemaMap(t, mutation))["result"].(map[string]any)
 	mutationResultProperties := schemaProperties(t, mutationResult)
 	assert.Contains(t, mutationResultProperties, "changed")
+	assert.Contains(t, mutationResultProperties, "dry_run")
 	assert.Contains(t, mutationResultProperties, "details")
 
 	read := findTool(t, result.Tools, "beget_list_sites")
@@ -446,6 +457,106 @@ func TestInvalidContractsDoNotReachBeget(t *testing.T) {
 	assert.Zero(t, caller.calls)
 }
 
+func TestEveryMutationSupportsLocalDryRunWithoutCallingBeget(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+	arguments := validOperationArguments()
+
+	for _, operation := range operationCatalog {
+		if !operation.mutating {
+			continue
+		}
+		params := make(map[string]any, len(arguments[operation.name])+1)
+		for name, value := range arguments[operation.name] {
+			params[name] = value
+		}
+		params["confirm"] = false
+		params["dry_run"] = true
+		callsBefore := caller.calls
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: operation.name, Arguments: params})
+		require.NoError(t, err, operation.name)
+		require.NotNil(t, result, operation.name)
+		assert.False(t, result.IsError, operation.name)
+		assert.Equal(t, callsBefore, caller.calls, "%s dry-run must not call Beget", operation.name)
+
+		mutation := structuredMap(t, result)["result"].(map[string]any)
+		assert.Equal(t, false, mutation["changed"], operation.name)
+		assessment := mutation["dry_run"].(map[string]any)
+		assert.Equal(t, "local", assessment["scope"], operation.name)
+		assert.Equal(t, "confirmation_required", assessment["status"], operation.name)
+		assert.Equal(t, false, assessment["provider_acceptance_guaranteed"], operation.name)
+	}
+}
+
+func TestDryRunReportsConfirmationAndCredentialPrerequisitesWithoutSecrets(t *testing.T) {
+	credentialStatus := beget.AuthenticationStatus{
+		Configured: false, Source: "secret-store-name", Message: "credential-message-that-must-not-leak",
+	}
+	caller := &fakeCaller{auth: &credentialStatus}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+	password := "Secret123!"
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_change_ftp_password",
+		Arguments: map[string]any{
+			"suffix": "ftp", "password": password, "confirm": true, "dry_run": true,
+		},
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	assessment := structuredMap(t, result)["result"].(map[string]any)["dry_run"].(map[string]any)
+	assert.Equal(t, "credentials_required", assessment["status"])
+	assert.Zero(t, caller.calls)
+	assert.NotContains(t, callToolText(result), password)
+	assert.NotContains(t, callToolText(result), credentialStatus.Source)
+	assert.NotContains(t, callToolText(result), credentialStatus.Message)
+}
+
+func TestServerCapabilitiesAreLocalTypedAndCredentialIndependent(t *testing.T) {
+	credentialStatus := beget.AuthenticationStatus{
+		Configured: true, Source: "secret-store-name", Message: "credential-message-that-must-not-leak",
+	}
+	caller := &fakeCaller{auth: &credentialStatus}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_server_capabilities", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	output := structuredMap(t, result)
+	capabilities := output["result"].(map[string]any)
+	assert.Equal(t, buildinfo.Version, capabilities["server_version"])
+	assert.Equal(t, true, capabilities["has_mutations"])
+	methods := capabilities["supported_beget_methods"].([]any)
+	assert.Len(t, methods, 65)
+	methodIndex := 0
+	for _, operation := range operationCatalog {
+		if operation.section == "local" {
+			continue
+		}
+		method := methods[methodIndex].(map[string]any)
+		assert.Equal(t, operation.name, method["tool"])
+		assert.Equal(t, operation.section, method["section"])
+		assert.Equal(t, operation.method, method["method"])
+		assert.Equal(t, operation.mutating, method["mutating"])
+		assert.Equal(t, operation.destructive, method["destructive"])
+		assert.Equal(t, operation.idempotent, method["idempotent"])
+		assert.Equal(t, operation.mutating, method["dry_run_supported"])
+		assert.Equal(t, operation.mutating, method["confirmation_required"])
+		methodIndex++
+	}
+	assert.Equal(t, "local", capabilities["dry_run"].(map[string]any)["scope"])
+	assert.Equal(t, false, capabilities["dry_run"].(map[string]any)["provider_acceptance_guaranteed"])
+	assert.Equal(t, false, capabilities["confirmation_tokens"].(map[string]any)["supported"])
+	assert.Equal(t, true, capabilities["idempotency"].(map[string]any)["annotations"])
+	assert.Equal(t, false, capabilities["secret_references"].(map[string]any)["supported"])
+	assert.Equal(t, false, capabilities["rotation_workflow"].(map[string]any)["supported"])
+	assert.Zero(t, caller.calls)
+	assert.NotContains(t, callToolText(result), credentialStatus.Source)
+	assert.NotContains(t, callToolText(result), credentialStatus.Message)
+}
+
 func TestPublishedOperationsAreRegisteredWithMatchingSafety(t *testing.T) {
 	client := &fakeCaller{}
 	session, closeSessions := connectTestClient(t, client)
@@ -465,10 +576,14 @@ func TestPublishedOperationsAreRegisteredWithMatchingSafety(t *testing.T) {
 		if spec.mutating {
 			assert.False(t, tool.Annotations.ReadOnlyHint, spec.name)
 			require.NotNilf(t, tool.Annotations.DestructiveHint, "%s must declare whether it is destructive", spec.name)
+			assert.Equal(t, spec.destructive, *tool.Annotations.DestructiveHint, spec.name)
+			assert.Equal(t, spec.idempotent, tool.Annotations.IdempotentHint, spec.name)
 			assert.Contains(t, schemaProperties(t, inputSchemaMap(t, tool)), "confirm", spec.name)
+			assert.Contains(t, schemaProperties(t, inputSchemaMap(t, tool)), "dry_run", spec.name)
 			continue
 		}
 		assert.True(t, tool.Annotations.ReadOnlyHint, spec.name)
+		assert.True(t, tool.Annotations.IdempotentHint, spec.name)
 	}
 }
 
@@ -737,6 +852,7 @@ func TestPublishedOperationsCallExactEndpointsWithFilteredArguments(t *testing.T
 		assert.Equal(t, spec.method, caller.method, spec.name)
 		if spec.mutating {
 			assert.NotContains(t, callerInputMap(t, caller.input), "confirm", spec.name)
+			assert.NotContains(t, callerInputMap(t, caller.input), "dry_run", spec.name)
 		}
 	}
 }
@@ -814,17 +930,17 @@ func TestSpecializedHandlers(t *testing.T) {
 	assert.True(t, result.IsError)
 	assert.Equal(t, ErrorConfirmationFailure, changeOutput.Errors[0].Type)
 	assert.False(t, changeOutput.Result.Changed)
-	result, changeOutput, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true})
+	result, changeOutput, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirmation: Confirmation{Confirm: true}})
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 	assert.Equal(t, ErrorValidation, changeOutput.Errors[0].Type)
-	result, changeOutput, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true, FQDN: "example.com"})
+	result, changeOutput, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirmation: Confirmation{Confirm: true}, FQDN: "example.com"})
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{
-		Confirm: true,
-		FQDN:    "example.com",
-		Records: DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}},
+		Confirmation: Confirmation{Confirm: true},
+		FQDN:         "example.com",
+		Records:      DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "changeRecords", caller.method)
@@ -833,15 +949,15 @@ func TestSpecializedHandlers(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 	assert.Equal(t, ErrorConfirmationFailure, freezeOutput.Errors[0].Type)
-	result, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{Confirm: true})
+	result, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{Confirmation: Confirmation{Confirm: true}})
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 	for _, excludedPath := range []string{"", "/absolute", "../escape"} {
-		result, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{ID: 42, Confirm: true, ExcludedPaths: []string{excludedPath}})
+		result, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{Confirmation: Confirmation{Confirm: true}, ID: 42, ExcludedPaths: []string{excludedPath}})
 		require.NoError(t, err)
 		assert.True(t, result.IsError)
 	}
-	_, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{ID: 42, Confirm: true, ExcludedPaths: []string{"cache"}})
+	_, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{Confirmation: Confirmation{Confirm: true}, ID: 42, ExcludedPaths: []string{"cache"}})
 	require.NoError(t, err)
 	assert.Equal(t, "freeze", caller.method)
 
@@ -849,10 +965,10 @@ func TestSpecializedHandlers(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
 	assert.Equal(t, ErrorConfirmationFailure, unfreezeOutput.Errors[0].Type)
-	result, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{Confirm: true})
+	result, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{Confirmation: Confirmation{Confirm: true}})
 	require.NoError(t, err)
 	assert.True(t, result.IsError)
-	_, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{ID: 42, Confirm: true})
+	_, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{Confirmation: Confirmation{Confirm: true}, ID: 42})
 	require.NoError(t, err)
 	assert.Equal(t, "unfreeze", caller.method)
 }

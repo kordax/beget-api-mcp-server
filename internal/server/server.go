@@ -24,7 +24,7 @@ type NoArgs struct{}
 const (
 	updateCheckIdleInterval = 10 * time.Minute
 	updateCheckTimeout      = 5 * time.Second
-	serverInstructions      = `Use beget_auth_status before the first Beget API operation when authorization state is unknown. Read current state and obtain resource identifiers from the matching list tool before a mutation. Never guess identifiers, domains, enum values, settings, or secrets. Describe the exact target and change, obtain explicit user approval, and only then call one mutating tool with confirm=true. Read success, the typed result, every machine-readable error type, and its next_step; for mutations always inspect result.changed. Verify a successful mutation with the matching read-only tool when available. Never retry a mutation automatically after a timeout, disconnect, or unknown_outcome; read the current state first. Each ordinary Beget tool call sends at most one provider request and performs no hidden preflight read. Treat authorization as a credentials setup request, not as an MCP transport failure. Never request or pass a Beget API key as a tool argument.`
+	serverInstructions      = `Use beget_auth_status before the first Beget API operation when authorization state is unknown. Read current state and obtain resource identifiers from the matching list tool before a mutation. Never guess identifiers, domains, enum values, settings, or secrets. Use dry_run=true with confirm=false only when local validation is useful; it sends no Beget request and never guarantees provider acceptance. Describe the exact target and change, obtain explicit user approval, and only then call one mutating tool with confirm=true. Read success, the typed result, every machine-readable error type, and its next_step; for mutations always inspect result.changed. Verify a successful mutation with the matching read-only tool when available. Never retry a mutation automatically after a timeout, disconnect, or unknown_outcome; read the current state first. Each ordinary Beget tool call sends at most one provider request and performs no hidden preflight read. Treat authorization as a credentials setup request, not as an MCP transport failure. Never request or pass a Beget API key as a tool argument.`
 )
 
 type DNSInput struct {
@@ -47,20 +47,20 @@ type DNSRecords struct {
 }
 
 type ChangeDNSInput struct {
+	Confirmation
 	FQDN    string     `json:"fqdn" jsonschema:"fully qualified domain name managed by Beget"`
 	Records DNSRecords `json:"records" jsonschema:"complete replacement record group accepted by Beget"`
-	Confirm bool       `json:"confirm" jsonschema:"must be true to authorize changing live DNS records"`
 }
 
 type FreezeSiteInput struct {
+	Confirmation
 	ID            int64    `json:"id" jsonschema:"site identifier returned by beget_list_sites"`
 	ExcludedPaths []string `json:"excluded_paths,omitempty" jsonschema:"relative paths that remain writable"`
-	Confirm       bool     `json:"confirm" jsonschema:"must be true to authorize changing the site freeze state"`
 }
 
 type UnfreezeSiteInput struct {
-	ID      int64 `json:"id" jsonschema:"site identifier returned by beget_list_sites"`
-	Confirm bool  `json:"confirm" jsonschema:"must be true to authorize changing the site freeze state"`
+	Confirmation
+	ID int64 `json:"id" jsonschema:"site identifier returned by beget_list_sites"`
 }
 
 type AuthenticationOutput struct {
@@ -70,7 +70,8 @@ type AuthenticationOutput struct {
 }
 
 type service struct {
-	client beget.Caller
+	client     beget.Caller
+	operations []operationSpec
 }
 
 type releaseChecker interface {
@@ -93,7 +94,7 @@ func New(client beget.Caller, checker *updater.Updater) *mcp.Server {
 }
 
 func newServer(client beget.Caller, checker releaseChecker, now func() time.Time) *mcp.Server {
-	service := &service{client: client}
+	service := &service{client: client, operations: operationCatalog}
 	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: buildinfo.Version}, &mcp.ServerOptions{
 		Instructions: serverInstructions,
 	})
@@ -175,7 +176,7 @@ func (s *service) getDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, inp
 }
 
 func (s *service) changeDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, input ChangeDNSInput) (*mcp.CallToolResult, ToolOutput[MutationResult[APIBool]], error) {
-	if !input.Confirm {
+	if !input.DryRun && !input.Confirm {
 		return mutationConfirmationFailure[APIBool]("beget_change_dns_records")
 	}
 	if err := validateDomainName("fqdn", input.FQDN); err != nil {
@@ -184,6 +185,9 @@ func (s *service) changeDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := validateDNSRecords(input.Records); err != nil {
 		return mutationValidationFailure[APIBool](err)
 	}
+	if input.DryRun {
+		return localMutationDryRun[APIBool](s, input.Confirm)
+	}
 	return callMutation[APIBool](ctx, s, "dns", "changeRecords", struct {
 		FQDN    string     `json:"fqdn"`
 		Records DNSRecords `json:"records"`
@@ -191,7 +195,7 @@ func (s *service) changeDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, 
 }
 
 func (s *service) freezeSite(ctx context.Context, _ *mcp.CallToolRequest, input FreezeSiteInput) (*mcp.CallToolResult, ToolOutput[MutationResult[APIBool]], error) {
-	if !input.Confirm {
+	if !input.DryRun && !input.Confirm {
 		return mutationConfirmationFailure[APIBool]("beget_freeze_site")
 	}
 	if input.ID <= 0 {
@@ -202,6 +206,9 @@ func (s *service) freezeSite(ctx context.Context, _ *mcp.CallToolRequest, input 
 			return mutationValidationFailure[APIBool](fmt.Errorf("excluded_paths contains %q, which is not a safe relative path", excludedPath))
 		}
 	}
+	if input.DryRun {
+		return localMutationDryRun[APIBool](s, input.Confirm)
+	}
 	return callMutation[APIBool](ctx, s, "site", "freeze", struct {
 		ID            int64    `json:"id"`
 		ExcludedPaths []string `json:"excludedPaths,omitempty"`
@@ -209,11 +216,14 @@ func (s *service) freezeSite(ctx context.Context, _ *mcp.CallToolRequest, input 
 }
 
 func (s *service) unfreezeSite(ctx context.Context, _ *mcp.CallToolRequest, input UnfreezeSiteInput) (*mcp.CallToolResult, ToolOutput[MutationResult[APIBool]], error) {
-	if !input.Confirm {
+	if !input.DryRun && !input.Confirm {
 		return mutationConfirmationFailure[APIBool]("beget_unfreeze_site")
 	}
 	if input.ID <= 0 {
 		return mutationValidationFailure[APIBool](errors.New("id must be positive"))
+	}
+	if input.DryRun {
+		return localMutationDryRun[APIBool](s, input.Confirm)
 	}
 	return callMutation[APIBool](ctx, s, "site", "unfreeze", struct {
 		ID int64 `json:"id"`
@@ -311,14 +321,14 @@ func validateDNSRecords(records DNSRecords) error {
 func readTool(name, description string) *mcp.Tool {
 	openWorld := true
 	return &mcp.Tool{Name: name, Description: description, Annotations: &mcp.ToolAnnotations{
-		Title: name, ReadOnlyHint: true, OpenWorldHint: &openWorld,
+		Title: name, ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &openWorld,
 	}}
 }
 
 func localReadTool(name, description string) *mcp.Tool {
 	openWorld := false
 	return &mcp.Tool{Name: name, Description: description, Annotations: &mcp.ToolAnnotations{
-		Title: name, ReadOnlyHint: true, OpenWorldHint: &openWorld,
+		Title: name, ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &openWorld,
 	}}
 }
 
