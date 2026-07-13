@@ -84,6 +84,8 @@ go test -race ./...
 
 The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 91.4% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
+Run `task benchmark` to measure server startup, MCP initialization, `tools/list`, schema generation, tool calls, and local fake-server HTTP round trips. The command reports time, bytes, and allocations without contacting Beget. See the [performance baseline](docs/performance.md) for the current reference run.
+
 Run `task mcp-inspector` to start the pinned official MCP Inspector for interactive protocol and tool testing. This command requires Node.js and npm with `npx`.
 
 ## Install on the system
@@ -110,7 +112,7 @@ beget-api-mcp-server upgrade
 
 Use `upgrade --check` to compare versions without changing files, or pass a release such as `upgrade v0.3.0`. In an interactive terminal, the command shows a spinner while checking and installing. Self-upgrade verifies the published SHA-256 checksum before atomically replacing the executable.
 
-The running MCP server also performs a lightweight release check on the first tool call after ten minutes without tool calls. If a newer release exists, the tool response includes a notice with the installed and available versions. The server never installs that release automatically, and a failed check does not fail the requested Beget tool.
+The running MCP server also starts a lightweight background release check on the first tool call after ten minutes without tool calls. The check never delays the requested Beget operation. If a newer release exists, the first tool response completed after the check includes a notice with the installed and available versions. The server never installs that release automatically, and a failed check does not fail a Beget tool.
 
 ## Credentials
 

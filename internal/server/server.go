@@ -87,6 +87,8 @@ type updateMonitor struct {
 	checker     releaseChecker
 	now         func() time.Time
 	lastCommand time.Time
+	checking    bool
+	notice      string
 }
 
 var Module = fx.Module("mcp", fx.Provide(New))
@@ -115,45 +117,60 @@ func newServer(client beget.Caller, checker releaseChecker, now func() time.Time
 
 func (monitor *updateMonitor) middleware(next mcp.MethodHandler) mcp.MethodHandler {
 	return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
-		notice := ""
-		if monitor.shouldCheck(method) {
-			notice = monitor.check(ctx)
-		}
+		monitor.scheduleCheck(method)
 		result, err := next(ctx, method, request)
-		if notice == "" || result == nil {
+		toolResult, ok := result.(*mcp.CallToolResult)
+		if method != "tools/call" || !ok {
 			return result, err
 		}
-		if toolResult, ok := result.(*mcp.CallToolResult); ok {
+		if notice := monitor.takeNotice(); notice != "" {
 			toolResult.Content = append(toolResult.Content, &mcp.TextContent{Text: notice})
 		}
 		return result, err
 	}
 }
 
-func (monitor *updateMonitor) shouldCheck(method string) bool {
+func (monitor *updateMonitor) scheduleCheck(method string) {
 	if method != "tools/call" || monitor.checker == nil {
-		return false
+		return
 	}
 	now := monitor.now()
 	monitor.mu.Lock()
-	defer monitor.mu.Unlock()
 	idle := now.Sub(monitor.lastCommand) >= updateCheckIdleInterval
 	monitor.lastCommand = now
-	return idle
+	if !idle || monitor.checking {
+		monitor.mu.Unlock()
+		return
+	}
+	monitor.checking = true
+	monitor.mu.Unlock()
+
+	go monitor.check()
 }
 
-func (monitor *updateMonitor) check(ctx context.Context) string {
-	checkContext, cancel := context.WithTimeout(ctx, updateCheckTimeout)
+func (monitor *updateMonitor) check() {
+	checkContext, cancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	defer cancel()
 	status, err := monitor.checker.Check(checkContext)
+	notice := ""
 	if err != nil {
 		log.Printf("check for beget-api-mcp-server update: %v", err)
-		return ""
+	} else if status.UpdateAvailable {
+		notice = fmt.Sprintf("A newer beget-api-mcp-server release is available: %s (current: %s). Run `beget-api-mcp-server upgrade` to install it; this MCP server did not update itself.", status.Latest, status.Current)
 	}
-	if !status.UpdateAvailable {
-		return ""
-	}
-	return fmt.Sprintf("A newer beget-api-mcp-server release is available: %s (current: %s). Run `beget-api-mcp-server upgrade` to install it; this MCP server did not update itself.", status.Latest, status.Current)
+
+	monitor.mu.Lock()
+	monitor.checking = false
+	monitor.notice = notice
+	monitor.mu.Unlock()
+}
+
+func (monitor *updateMonitor) takeNotice() string {
+	monitor.mu.Lock()
+	defer monitor.mu.Unlock()
+	notice := monitor.notice
+	monitor.notice = ""
+	return notice
 }
 
 func (s *service) authenticationStatus(context.Context, *mcp.CallToolRequest, NoArgs) (*mcp.CallToolResult, AuthenticationOutput, error) {

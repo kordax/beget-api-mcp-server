@@ -23,6 +23,11 @@ tasks:
     cmds:
       - go test -race ./...
 
+  benchmark:
+    desc: Measure MCP contracts and local fake-server round trips
+    cmds:
+      - go test -run '^$' -bench . -benchmem ./internal/server ./internal/beget
+
   test-installers:
     desc: Validate the system installer scripts
     cmds:

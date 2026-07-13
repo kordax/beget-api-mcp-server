@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,13 +48,26 @@ func (*fakeCaller) AuthenticationStatus() beget.AuthenticationStatus {
 }
 
 type fakeReleaseChecker struct {
-	status updater.VersionStatus
-	err    error
-	calls  int
+	status      updater.VersionStatus
+	err         error
+	calls       atomic.Int32
+	started     chan struct{}
+	release     chan struct{}
+	startedOnce sync.Once
 }
 
-func (checker *fakeReleaseChecker) Check(context.Context) (updater.VersionStatus, error) {
-	checker.calls++
+func (checker *fakeReleaseChecker) Check(ctx context.Context) (updater.VersionStatus, error) {
+	checker.calls.Add(1)
+	if checker.started != nil {
+		checker.startedOnce.Do(func() { close(checker.started) })
+	}
+	if checker.release != nil {
+		select {
+		case <-checker.release:
+		case <-ctx.Done():
+			return updater.VersionStatus{}, ctx.Err()
+		}
+	}
 	return checker.status, checker.err
 }
 
@@ -221,38 +235,72 @@ func TestAuthenticationStatusDoesNotCallBeget(t *testing.T) {
 	assert.Zero(t, caller.calls)
 }
 
-func TestUpdateCheckRunsAfterIdleToolCallAndOnlyNotifies(t *testing.T) {
+func TestUpdateCheckRunsInBackgroundAndOnlyNotifiesOnce(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	checker := &fakeReleaseChecker{status: updater.VersionStatus{
 		Current: "v0.3.3", Latest: "v0.3.4", UpdateAvailable: true,
-	}}
+	}, started: make(chan struct{}), release: make(chan struct{})}
 	server := newServer(&fakeCaller{}, checker, func() time.Time { return now })
 	session, closeSessions := connectServer(t, server)
 	defer closeSessions()
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
 	require.NoError(t, err)
-	assert.Zero(t, checker.calls)
+	assert.Zero(t, checker.calls.Load())
 	assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
 
 	now = now.Add(updateCheckIdleInterval)
-	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
-	require.NoError(t, err)
-	assert.Equal(t, 1, checker.calls)
-	assert.Contains(t, callToolText(result), "newer beget-api-mcp-server release is available: v0.3.4")
+	callDone := make(chan *mcp.CallToolResult, 1)
+	go func() {
+		callResult, callErr := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+		if callErr != nil {
+			callDone <- nil
+			return
+		}
+		callDone <- callResult
+	}()
+	select {
+	case <-checker.started:
+	case <-time.After(time.Second):
+		t.Fatal("background release check did not start")
+	}
+	select {
+	case result = <-callDone:
+		require.NotNil(t, result)
+		assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
+	case <-time.After(200 * time.Millisecond):
+		close(checker.release)
+		t.Fatal("release check blocked the MCP tool call")
+	}
+	close(checker.release)
+	assert.EqualValues(t, 1, checker.calls.Load())
+
+	_, err = session.ListTools(context.Background(), nil)
+	require.NoError(t, err, "non-tool requests must not consume a cached release notice")
+	require.Eventually(t, func() bool {
+		result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+		return err == nil && strings.Contains(callToolText(result), "newer beget-api-mcp-server release is available: v0.3.4")
+	}, time.Second, 10*time.Millisecond)
 	assert.Contains(t, callToolText(result), "did not update itself")
 
 	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
 	require.NoError(t, err)
-	assert.Equal(t, 1, checker.calls)
+	assert.EqualValues(t, 1, checker.calls.Load())
 	assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
+}
+
+func TestBackgroundUpdateCheckErrorDoesNotFailToolCall(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	checker := &fakeReleaseChecker{err: errors.New("release service unavailable")}
+	server := newServer(&fakeCaller{}, checker, func() time.Time { return now })
+	session, closeSessions := connectServer(t, server)
+	defer closeSessions()
 
 	now = now.Add(updateCheckIdleInterval)
-	checker.err = errors.New("release service unavailable")
-	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
 	require.NoError(t, err, "release checks must not fail Beget tools")
-	assert.Equal(t, 2, checker.calls)
 	assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
+	require.Eventually(t, func() bool { return checker.calls.Load() == 1 }, time.Second, 10*time.Millisecond)
 }
 
 func TestMutationRequiresConfirmation(t *testing.T) {
