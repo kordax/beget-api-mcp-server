@@ -25,7 +25,7 @@ func TestRunShowsHelp(t *testing.T) {
 		{name: "long flag", arguments: []string{"--help"}, contains: []string{"Usage:", "--streamable-http"}},
 		{name: "short flag after transport option", arguments: []string{"--stdio", "-h"}, contains: []string{"Usage:", "--stdio"}},
 		{name: "credentials", arguments: []string{"help", "credentials"}, contains: []string{"credentials set", "credentials check", "credentials delete"}},
-		{name: "credentials alias", arguments: []string{"credentials", "--help"}, contains: []string{"system keyring", "credentials set"}},
+		{name: "credentials alias", arguments: []string{"credentials", "--help"}, contains: []string{"persistent credential store", "credentials set"}},
 		{name: "credentials set", arguments: []string{"credentials", "set", "--help"}, contains: []string{"--login <login>", "never accepted"}},
 		{name: "upgrade", arguments: []string{"upgrade", "help"}, contains: []string{"upgrade --check", "latest release"}},
 	}

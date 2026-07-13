@@ -37,7 +37,7 @@ DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAM
 
 ## Architecture
 
-The entry point delegates to `app.Run`, which selects either the MCP server or the credentials command. Both paths resolve their dependencies through Uber Fx. Configuration, the system keyring, HTTP client, Beget adapter, MCP server, and process lifecycle remain separate modules.
+The entry point delegates to `app.Run`, which selects either the MCP server or the credentials command. Both paths resolve their dependencies through Uber Fx. Configuration, the persistent credential store, HTTP client, Beget adapter, MCP server, and process lifecycle remain separate modules.
 
 The project uses:
 
@@ -45,7 +45,7 @@ The project uses:
 - Uber Fx 1.24.0
 - Testify 1.11.1
 - `github.com/kordax/basic-utils/v3` 3.4.0
-- `github.com/zalando/go-keyring` 0.2.8
+- `github.com/zalando/go-keyring` 0.2.8 migrates credentials saved by earlier releases
 - the official MCP Go SDK
 
 ## Transports
@@ -68,7 +68,7 @@ Run the binary with `help`, `-h`, or `--help` to see its commands and transport 
 beget-api-mcp-server help
 ```
 
-Command-specific help is available without starting the MCP server or accessing the system keyring:
+Command-specific help is available without starting the MCP server or accessing the credential store:
 
 ```bash
 beget-api-mcp-server help credentials
@@ -116,13 +116,13 @@ The running MCP server also performs a lightweight release check on the first to
 
 ## Credentials
 
-Enable API access in the Beget control panel and create a dedicated API password. Save it once in the operating system keyring:
+Enable API access in the Beget control panel and create a dedicated API password. Save it once in the server's persistent credential store:
 
 ```bash
 beget-api-mcp-server credentials set --login your-login
 ```
 
-The command reads the API key from a hidden terminal prompt. A pipe may be used in non-interactive automation. The key is stored by Secret Service on Linux, Keychain on macOS, or Credential Manager on Windows. Verify or remove it without displaying either value:
+The command reads the API key from a hidden terminal prompt. A pipe may be used in non-interactive automation. Credentials are written to the standard per-user configuration directory. On Unix systems the server enforces `0700` on its directory and rejects credential files accessible by group or other users; the file itself is created with `0600`. On Windows it uses the current user's AppData directory and inherited user ACL. Verify or remove the values without displaying either one:
 
 ```bash
 beget-api-mcp-server credentials check
@@ -138,9 +138,9 @@ command = "beget-api-mcp-server"
 
 Stdio is the default transport, so no transport argument is required.
 
-The MCP server starts even when credentials are not configured. Agents can call `beget_auth_status` to detect that state and receive safe setup guidance. Actual Beget tools validate authorization only when called. If the system keyring was temporarily unavailable during startup, the server retries it while credentials are missing. After a successful load, credentials stay in process memory until the server stops, so a temporary later keyring failure does not drop authorization. The installer also provides a `beget-api` Codex skill that teaches this workflow and keeps API keys out of MCP arguments.
+Every server process reads the same persistent file, so credentials survive restarts and independent MCP processes. Existing Secret Service, Keychain, or Credential Manager entries created by earlier releases are migrated automatically on first use. The MCP server also starts when credentials are not configured: agents can call `beget_auth_status` to receive safe setup guidance, and the server retries the persistent store while credentials are missing. After a successful load, credentials stay cached in process memory until shutdown. The installer also provides a `beget-api` Codex skill that teaches this workflow and keeps API keys out of MCP arguments.
 
-`BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, headless Linux sessions without Secret Service, and external password-manager launchers.
+`BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, and external password-manager launchers.
 
 The API password is sent to Beget in an HTTPS POST form body. It is not placed in URLs, logs, tool arguments, or tool results. Tests use fake credentials and local HTTP servers, so they never contact a real Beget account.
 

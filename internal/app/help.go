@@ -35,7 +35,7 @@ Transport options:
 Run "beget-api-mcp-server help <command>" for command-specific help.
 `
 
-const accountAccessHelp = `Manage Beget credentials in the system keyring.
+const accountAccessHelp = `Manage Beget credentials in the persistent credential store.
 
 Usage:
   beget-api-mcp-server credentials set --login <login>
@@ -50,7 +50,7 @@ Commands:
 Run "beget-api-mcp-server help credentials set" for set options.
 `
 
-const accountAccessSetHelp = `Save Beget credentials in the system keyring.
+const accountAccessSetHelp = `Save Beget credentials in the persistent credential store.
 
 Usage:
   beget-api-mcp-server credentials set --login <login>

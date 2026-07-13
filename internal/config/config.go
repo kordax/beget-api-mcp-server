@@ -32,7 +32,7 @@ func FromSources(store credentials.Store) (Config, error) {
 	source := "environment"
 	var credentialError error
 	if login == "" || apiKey == "" {
-		source = "system-keyring"
+		source = "persistent-store"
 		if store != nil {
 			stored, err := store.Load()
 			if err == nil {
@@ -43,7 +43,7 @@ func FromSources(store credentials.Store) (Config, error) {
 					apiKey = stored.APIKey
 				}
 				if os.Getenv("BEGET_API_LOGIN") != "" || os.Getenv("BEGET_API_KEY") != "" {
-					source = "environment-and-keyring"
+					source = "environment-and-store"
 				}
 			} else {
 				credentialError = err

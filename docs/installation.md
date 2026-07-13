@@ -38,13 +38,13 @@ The release also installs the `beget-api` skill into Codex. Other MCP clients re
 
 ## Save Beget credentials
 
-Enable Hosting API access in the Beget control panel and create a dedicated API password. Save the login and password in the operating system keyring:
+Enable Hosting API access in the Beget control panel and create a dedicated API password. Save the login and password in the server's persistent credential store:
 
 ```bash
 beget-api-mcp-server credentials set --login your-beget-login
 ```
 
-The API key is read from a hidden prompt and is never accepted as a command-line argument. The command uses Secret Service on Linux, Keychain on macOS, and Credential Manager on Windows.
+The API key is read from a hidden prompt and is never accepted as a command-line argument. The command writes a versioned credential file in the standard per-user configuration directory. On Linux this is normally `~/.config/beget-api-mcp-server/credentials.json`, on macOS it is under `~/Library/Application Support`, and on Windows it is under the current user's AppData directory.
 
 Verify or remove the stored credentials without displaying them:
 
@@ -53,13 +53,13 @@ beget-api-mcp-server credentials check
 beget-api-mcp-server credentials delete
 ```
 
-Linux desktop sessions normally provide Secret Service automatically. For a headless server without a Secret Service daemon, use the environment fallback described below.
+On Unix systems the directory is restricted to `0700` and the file to `0600`. The server refuses to read a credential file or directory accessible by group or other users. On Windows the file inherits the current user's AppData ACL. Credentials created by an earlier release in Secret Service, Keychain, or Credential Manager are migrated automatically when first read.
 
-Credentials are optional during MCP startup. Without them, the server still connects to the client and exposes `beget_auth_status`; an actual Beget operation returns a concise authorization error until credentials are supplied and the server is reconnected.
+Credentials are optional during MCP startup. Without them, the server still connects to the client and exposes `beget_auth_status`; an actual Beget operation returns a concise authorization error until credentials are supplied. A running unconfigured server retries the persistent store on the next request, so `credentials set` does not require a reconnect.
 
 ## Universal MCP contract
 
-The server uses stdio by default and loads credentials from the system keyring. It does not call Codex APIs and does not require a client-specific launcher. A typical JSON-based MCP client can start it like this:
+The server uses stdio by default and loads credentials from its persistent per-user store. It does not call Codex APIs and does not require a client-specific launcher. A typical JSON-based MCP client can start it like this:
 
 ```json
 {
@@ -108,7 +108,7 @@ If the process does not start, restart the IDE so it receives the updated user `
 
 ## Secret storage
 
-The built-in system keyring is the recommended local setup. Environment variables take precedence when both are present:
+The built-in persistent store is the recommended local setup because every process for the same user reads the same protected file. Environment variables take precedence when both are present:
 
 ```bash
 BEGET_API_LOGIN=your-beget-login \
@@ -116,9 +116,9 @@ BEGET_API_KEY=your-api-password \
 beget-api-mcp-server --stdio
 ```
 
-This fallback is intended for containers, CI, headless systems, and external password managers. Do not place the API key in command-line arguments or commit it to an MCP configuration.
+This fallback is intended for containers, CI, and external password managers. Do not place the API key in command-line arguments or commit it to an MCP configuration.
 
-If the keyring is temporarily unavailable when the MCP process starts, the server retries it on later tool calls while credentials are still missing. Once loaded, credentials remain in process memory until shutdown. Running `credentials set` can therefore repair an already running unconfigured server on its next request without exposing the API key through MCP.
+The credential file is written through a private temporary file, flushed before replacement, and never included in MCP results or logs. Once loaded, credentials are also cached in process memory until shutdown. Use `credentials delete` to remove both the persistent file and any legacy keyring entries.
 
 ## Install from a local clone
 

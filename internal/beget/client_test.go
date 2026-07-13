@@ -125,9 +125,9 @@ func TestConfiguredClientDefersMissingCredentialsUntilCall(t *testing.T) {
 		BaseURL:          "https://example.com/api",
 		Timeout:          time.Second,
 		CredentialSource: "not-configured",
-		CredentialError:  errors.New("keyring unavailable"),
+		CredentialError:  errors.New("credential store unavailable"),
 	}
-	store := &fakeCredentialStore{err: errors.New("keyring unavailable")}
+	store := &fakeCredentialStore{err: errors.New("credential store unavailable")}
 	client, err := NewFromConfig(configuration, NewHTTPClient(configuration), store)
 	require.NoError(t, err)
 
@@ -151,7 +151,7 @@ func TestConfiguredClientValidatesBaseURLAndDefaultsHTTPClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.Same(t, http.DefaultClient, client.http)
 
-	cause := errors.New("keyring unavailable")
+	cause := errors.New("credential store unavailable")
 	assert.ErrorIs(t, &AuthenticationError{Cause: cause}, cause)
 }
 
@@ -165,16 +165,16 @@ func TestConfiguredClientRecoversStoredCredentialsAndKeepsThemInMemory(t *testin
 	defer server.Close()
 
 	store := &fakeCredentialStore{value: credentials.Credentials{Login: "stored-login", APIKey: "stored-key"}}
-	configuration := config.Config{BaseURL: server.URL, CredentialSource: "not-configured", CredentialError: errors.New("keyring was unavailable at startup")}
+	configuration := config.Config{BaseURL: server.URL, CredentialSource: "not-configured", CredentialError: errors.New("credential store was unavailable at startup")}
 	client, err := NewFromConfig(configuration, server.Client(), store)
 	require.NoError(t, err)
 
 	status := client.AuthenticationStatus()
 	assert.True(t, status.Configured)
-	assert.Equal(t, "system-keyring", status.Source)
+	assert.Equal(t, "persistent-store", status.Source)
 	assert.Equal(t, 1, store.loads)
 
-	store.err = errors.New("keyring became unavailable again")
+	store.err = errors.New("credential store became unavailable again")
 	_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
 	require.NoError(t, err)
 	assert.Equal(t, 1, store.loads, "credentials must stay cached after a successful load")

@@ -230,9 +230,9 @@ func (c *Client) credentials() (string, string, string, error) {
 	if c.apiKey == "" {
 		c.apiKey = stored.APIKey
 	}
-	c.source = "system-keyring"
+	c.source = "persistent-store"
 	if hasEnvironmentValue {
-		c.source = "environment-and-keyring"
+		c.source = "environment-and-store"
 	}
 	c.authErr = nil
 	return c.login, c.apiKey, c.source, nil

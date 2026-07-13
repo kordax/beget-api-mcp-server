@@ -44,7 +44,7 @@ func (command *Command) Run(arguments []string) error {
 		if _, err := command.store.Load(); err != nil {
 			return err
 		}
-		_, err := fmt.Fprintln(command.output, "Beget credentials are configured in the system keyring")
+		_, err := fmt.Fprintln(command.output, "Beget credentials are configured in the persistent credential store")
 		return err
 	case "delete":
 		if len(arguments) != 1 {
@@ -53,7 +53,7 @@ func (command *Command) Run(arguments []string) error {
 		if err := command.store.Delete(); err != nil {
 			return err
 		}
-		_, err := fmt.Fprintln(command.output, "Beget credentials were removed from the system keyring")
+		_, err := fmt.Fprintln(command.output, "Beget credentials were removed from the persistent credential store")
 		return err
 	default:
 		return fmt.Errorf("unknown credentials command %q", arguments[0])
@@ -81,7 +81,7 @@ func (command *Command) set(arguments []string) error {
 	if err := command.store.Save(Credentials{Login: *login, APIKey: apiKey}); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(command.output, "Beget credentials were saved in the system keyring")
+	_, err = fmt.Fprintln(command.output, "Beget credentials were saved in the persistent credential store")
 	return err
 }
 
