@@ -34,7 +34,7 @@ jobs:
             mkdir -p "dist/${name}"
             CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build \
               -trimpath \
-              -ldflags "-s -w -X github.com/kordax/beget-api-mcp-server/internal/server.version=${VERSION#v}" \
+              -ldflags "-s -w -X github.com/kordax/beget-api-mcp-server/internal/buildinfo.Version=${VERSION#v}" \
               -o "dist/${name}/${binary}" \
               ./cmd/beget-api-mcp-server
             cp LICENSE README.md README.ru.md "dist/${name}/"

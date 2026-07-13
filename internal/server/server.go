@@ -11,11 +11,10 @@ import (
 	"strings"
 
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
+	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/fx"
 )
-
-var version = "0.2.3"
 
 type NoArgs struct{}
 
@@ -73,7 +72,7 @@ var Module = fx.Module("mcp", fx.Provide(New))
 
 func New(client beget.Caller) *mcp.Server {
 	service := &service{client: client}
-	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: version}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: buildinfo.Version}, nil)
 	mcp.AddTool(server, readTool("beget_auth_status", "Check Beget authorization before API calls and return safe setup guidance without revealing secrets."), service.authenticationStatus)
 
 	service.addReadOnly(server, "beget_account_info", "Read hosting account plan, server, and quota information.", "user", "getAccountInfo")

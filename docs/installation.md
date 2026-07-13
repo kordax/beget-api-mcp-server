@@ -132,13 +132,22 @@ The client configuration does not need to change because the installed binary pa
 
 ## Update
 
-Run the installer again. It resolves the latest release and replaces the installed binary after checksum verification:
+Use the built-in self-updater:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.sh | sh
+beget-api-mcp-server upgrade
 ```
 
-Restart or reconnect the MCP server in the client so it starts the new binary.
+Check without installing, or select a specific release:
+
+```bash
+beget-api-mcp-server upgrade --check
+beget-api-mcp-server upgrade v0.3.0
+```
+
+The updater detects the current platform, downloads the matching release, verifies its SHA-256 entry, and replaces the executable atomically. It preserves the previous Windows executable until replacement succeeds. Set `GH_TOKEN` or `GITHUB_TOKEN` only when downloading from a private GitHub repository; public releases need no token. Restart or reconnect the MCP server after updating.
+
+Running the one-line installer again remains a supported recovery path.
 
 ## Remove
 

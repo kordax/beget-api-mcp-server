@@ -20,6 +20,8 @@ If credentials are not configured:
 
 The server may start without credentials. Treat an authorization error from a Beget tool as a configuration request, not as an MCP transport failure.
 
+Use `beget-api-mcp-server upgrade --check` to inspect release availability and `beget-api-mcp-server upgrade` only when the user asks to update the local server. Reconnect the MCP client afterward.
+
 ## Operations
 
 Prefer read-only tools for inspection. Before a mutating tool, describe the intended change and obtain explicit user confirmation. Set `confirm` only after that confirmation.

@@ -68,7 +68,7 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 94.9% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 91.2% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 Run `task mcp-inspector` to start the pinned official MCP Inspector for interactive protocol and tool testing. This command requires Node.js and npm with `npx`.
 
@@ -87,6 +87,14 @@ irm https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.p
 ```
 
 The installer detects the operating system and architecture, verifies the release checksum, and adds the command to the user `PATH`. The complete MCP client setup, manual installation, updating, and removal are in [the installation guide](docs/installation.md).
+
+Update an installed binary in place:
+
+```bash
+beget-api-mcp-server upgrade
+```
+
+Use `upgrade --check` to compare versions without changing files, or pass a release such as `upgrade v0.3.0`. Self-upgrade verifies the published SHA-256 checksum before atomically replacing the executable.
 
 ## Credentials
 

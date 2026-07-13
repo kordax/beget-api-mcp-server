@@ -23,6 +23,16 @@ func TestRunValidatesCredentialCommands(t *testing.T) {
 	assert.Contains(t, output.String(), "unknown credentials command")
 }
 
+func TestRunValidatesUpgradeCommand(t *testing.T) {
+	var output bytes.Buffer
+	assert.Equal(t, 1, Run([]string{"upgrade", "one", "two"}, &output))
+	assert.Contains(t, output.String(), "at most one version")
+
+	output.Reset()
+	assert.Equal(t, 0, Run([]string{"upgrade", "v0.3.0"}, &output))
+	assert.Empty(t, output.String())
+}
+
 func TestRunServerReportsConciseRootCause(t *testing.T) {
 	var output bytes.Buffer
 	expected := errors.New("stored Beget credentials were not found")
