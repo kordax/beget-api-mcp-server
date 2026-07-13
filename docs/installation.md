@@ -14,22 +14,25 @@ go version
 
 ## First installation
 
-Extract the release archive and move `beget-api-mcp-server` or `beget-api-mcp-server.exe` to a directory listed in `PATH`.
-
-Alternatively, install the current tagged version with Go:
+Install the latest release globally for the current Linux or macOS user:
 
 ```bash
-mkdir -p "$HOME/.local/bin"
-GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
+curl -fsSL https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.sh | sh
 ```
 
-Verify the file without starting the MCP server:
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.ps1 | iex
+```
+
+The installer detects the operating system and architecture, downloads the matching release, verifies its SHA-256 checksum, and adds `beget-api-mcp-server` to the user `PATH`. It never invokes `sudo`. Restart the terminal after the first installation, then verify the command:
 
 ```bash
-test -x "$HOME/.local/bin/beget-api-mcp-server"
+command -v beget-api-mcp-server
 ```
 
-The binary can also live outside `PATH` because MCP configurations accept its absolute path.
+Set `BEGET_MCP_VERSION` to install a specific version or `BEGET_MCP_INSTALL_DIR` to choose another directory. Prebuilt archives and checksums remain available on the release page for manual installation.
 
 ## Save Beget credentials
 
@@ -58,14 +61,13 @@ The server uses stdio by default and loads credentials from the system keyring. 
 {
   "mcpServers": {
     "beget": {
-      "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"]
+      "command": "beget-api-mcp-server"
     }
   }
 }
 ```
 
-Replace `/home/your-user` with the real path. This format works for clients that use the common `mcpServers` JSON structure.
+Stdio is the default, so the configuration needs neither an absolute path nor transport arguments. This format works for clients that use the common `mcpServers` JSON structure.
 
 ## Codex example
 
@@ -73,7 +75,7 @@ Codex uses TOML instead of the JSON structure above. Add this to `~/.codex/confi
 
 ```toml
 [mcp_servers.beget]
-command = "/home/your-user/.local/bin/beget-api-mcp-server"
+command = "beget-api-mcp-server"
 ```
 
 Restart Codex after changing the configuration. This is only a Codex-specific representation of the same universal command and environment contract.
@@ -88,8 +90,7 @@ Add the Beget server using this JSON configuration:
 {
   "mcpServers": {
     "beget": {
-      "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"]
+      "command": "beget-api-mcp-server"
     }
   }
 }
@@ -99,7 +100,7 @@ Click `OK`, then `Apply`. The status column should show a successful connection.
 
 To expose custom MCP servers to Junie, open `Settings | Tools | AI Assistant | Agents` and enable `Pass custom MCP servers`.
 
-If the process does not start, open `Help | Show Log in Explorer`, enter the `mcp` directory, and inspect the Beget server log. A wrong executable path is the most common problem when an IDE is started from the desktop.
+If the process does not start, restart the IDE so it receives the updated user `PATH`. Then open `Help | Show Log in Explorer`, enter the `mcp` directory, and inspect the Beget server log.
 
 ## Secret storage
 
@@ -120,24 +121,24 @@ This path is useful while developing the server and requires Git:
 ```bash
 git clone https://github.com/kordax/beget-api-mcp-server.git
 cd beget-api-mcp-server
-GOBIN="$HOME/.local/bin" go install ./cmd/beget-api-mcp-server
+go install ./cmd/beget-api-mcp-server
 ```
 
 The client configuration does not need to change because the installed binary path stays the same.
 
 ## Update
 
-Download and replace the binary with a newer release archive, or repeat the Go installation command:
+Run the installer again. It resolves the latest release and replaces the installed binary after checksum verification:
 
 ```bash
-GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
+curl -fsSL https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.sh | sh
 ```
 
 Restart or reconnect the MCP server in the client so it starts the new binary.
 
 ## Remove
 
-Run `beget-api-mcp-server credentials delete`, remove the Beget server entry from the MCP client, then delete the installed binary.
+Run `beget-api-mcp-server credentials delete`, remove the Beget server entry from the MCP client, then delete the command shown by `command -v beget-api-mcp-server`. The installer prints the same location during installation.
 
 ## Security notes
 

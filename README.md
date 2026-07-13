@@ -74,16 +74,19 @@ Run `task mcp-inspector` to start the pinned official MCP Inspector for interact
 
 ## Install on the system
 
-Download a prebuilt Linux, macOS, or Windows archive from [GitHub Releases](https://github.com/kordax/beget-api-mcp-server/releases), or install from source. The complete MCP client setup is in [the installation guide](docs/installation.md).
-
-The short version is:
+Install the latest release globally for the current Linux or macOS user:
 
 ```bash
-mkdir -p "$HOME/.local/bin"
-GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
+curl -fsSL https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.sh | sh
 ```
 
-The full guide covers MCP client configuration, safe credential handling, updating, and removal.
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.ps1 | iex
+```
+
+The installer detects the operating system and architecture, verifies the release checksum, and adds the command to the user `PATH`. The complete MCP client setup, manual installation, updating, and removal are in [the installation guide](docs/installation.md).
 
 ## Credentials
 
@@ -104,8 +107,10 @@ MCP clients then need only the executable command:
 
 ```toml
 [mcp_servers.beget]
-command = "/absolute/path/to/bin/beget-api-mcp-server"
+command = "beget-api-mcp-server"
 ```
+
+Stdio is the default transport, so no transport argument is required.
 
 `BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, headless Linux sessions without Secret Service, and external password-manager launchers.
 

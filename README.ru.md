@@ -78,16 +78,19 @@ go test -race ./...
 
 ## Установка в систему
 
-Готовый архив для Linux, macOS или Windows можно скачать из [GitHub Releases](https://github.com/kordax/beget-api-mcp-server/releases). Полная установка и настройка MCP-клиента описаны в [отдельной инструкции](docs/installation.ru.md).
-
-Короткий вариант:
+Последний выпуск можно глобально установить для текущего пользователя Linux или macOS одной командой:
 
 ```bash
-mkdir -p "$HOME/.local/bin"
-GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
+curl -fsSL https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.sh | sh
 ```
 
-В полной инструкции также описаны настройка MCP-клиента, безопасная передача учетных данных, обновление и удаление.
+Для Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.ps1 | iex
+```
+
+Установщик сам определяет систему и архитектуру, проверяет контрольную сумму выпуска и добавляет команду в пользовательский `PATH`. Ручная установка, обновление, удаление и настройка MCP-клиентов описаны в [отдельной инструкции](docs/installation.ru.md).
 
 ## Настройка доступа
 
@@ -110,8 +113,10 @@ beget-api-mcp-server credentials delete
 
 ```toml
 [mcp_servers.beget]
-command = "/absolute/path/to/bin/beget-api-mcp-server"
+command = "beget-api-mcp-server"
 ```
+
+Stdio является транспортом по умолчанию, поэтому указывать его аргументом не требуется.
 
 Переменные `BEGET_API_LOGIN` и `BEGET_API_KEY` продолжают поддерживаться и имеют приоритет над сохраненными значениями. Они подходят для контейнеров, CI, headless Linux без Secret Service и запуска через внешний менеджер паролей.
 

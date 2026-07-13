@@ -19,14 +19,13 @@ Stdio is the default and the simplest choice for a local MCP client. The client 
 {
   "mcpServers": {
     "beget": {
-      "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"]
+      "command": "beget-api-mcp-server"
     }
   }
 }
 ```
 
-The `--stdio` argument may be omitted because it is the default.
+No arguments are required because stdio is the default.
 
 ## Streamable HTTP
 

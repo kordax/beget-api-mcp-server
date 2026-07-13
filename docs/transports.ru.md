@@ -19,14 +19,13 @@ Stdio является вариантом по умолчанию и проще 
 {
   "mcpServers": {
     "beget": {
-      "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"]
+      "command": "beget-api-mcp-server"
     }
   }
 }
 ```
 
-Аргумент `--stdio` можно убрать, потому что этот транспорт и так выбран по умолчанию.
+Аргументы не нужны, потому что stdio уже выбран по умолчанию.
 
 ## Streamable HTTP
 

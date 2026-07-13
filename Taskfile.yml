@@ -23,6 +23,12 @@ tasks:
     cmds:
       - go test -race ./...
 
+  test-installers:
+    desc: Validate the system installer scripts
+    cmds:
+      - sh -n install.sh
+      - if command -v pwsh >/dev/null 2>&1; then pwsh -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw ./install.ps1)) | Out-Null"; fi
+
   lint:
     desc: Run configured Go linters and formatters
     cmds:
@@ -55,6 +61,7 @@ tasks:
     desc: Run the complete local verification suite
     cmds:
       - test -z "$(gofmt -l .)"
+      - task: test-installers
       - go vet ./...
       - go test -race ./...
       - go test ./... -coverprofile=coverage.out -covermode=atomic -coverpkg=./...
