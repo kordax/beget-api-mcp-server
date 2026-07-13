@@ -37,6 +37,10 @@ func (f *fakeCaller) Call(_ context.Context, section, method string, input any) 
 	return f.answer, f.err
 }
 
+func (*fakeCaller) AuthenticationStatus() beget.AuthenticationStatus {
+	return beget.AuthenticationStatus{Configured: true, Source: "test", Message: "configured for tests"}
+}
+
 func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	client := &fakeCaller{}
 	session, closeSessions := connectTestClient(t, client)
@@ -48,7 +52,8 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	for _, tool := range result.Tools {
 		tools[tool.Name] = tool
 	}
-	assert.Len(t, tools, 11)
+	assert.Len(t, tools, 12)
+	require.Contains(t, tools, "beget_auth_status")
 	require.Contains(t, tools, "beget_list_sites")
 	assert.True(t, tools["beget_list_sites"].Annotations.ReadOnlyHint)
 	require.Contains(t, tools, "beget_change_dns_records")
@@ -56,6 +61,18 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	assert.False(t, change.ReadOnlyHint)
 	require.NotNil(t, change.DestructiveHint)
 	assert.True(t, *change.DestructiveHint)
+}
+
+func TestAuthenticationStatusDoesNotCallBeget(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.False(t, result.IsError)
+	assert.Zero(t, caller.calls)
 }
 
 func TestMutationRequiresConfirmation(t *testing.T) {

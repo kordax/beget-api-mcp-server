@@ -102,6 +102,40 @@ func TestClientConstruction(t *testing.T) {
 	configured, err := NewFromConfig(configuration, httpClient)
 	require.NoError(t, err)
 	assert.Same(t, httpClient, configured.http)
+	assert.True(t, configured.AuthenticationStatus().Configured)
+}
+
+func TestConfiguredClientDefersMissingCredentialsUntilCall(t *testing.T) {
+	configuration := config.Config{
+		BaseURL:          "https://example.com/api",
+		Timeout:          time.Second,
+		CredentialSource: "not-configured",
+		CredentialError:  errors.New("keyring unavailable"),
+	}
+	client, err := NewFromConfig(configuration, NewHTTPClient(configuration))
+	require.NoError(t, err)
+
+	status := client.AuthenticationStatus()
+	assert.False(t, status.Configured)
+	assert.Equal(t, "not-configured", status.Source)
+	assert.Contains(t, status.Message, "BEGET_API_LOGIN")
+
+	_, err = client.Call(context.Background(), "domain", "getList", nil)
+	var authenticationError *AuthenticationError
+	require.ErrorAs(t, err, &authenticationError)
+	assert.ErrorContains(t, err, "credentials set")
+}
+
+func TestConfiguredClientValidatesBaseURLAndDefaultsHTTPClient(t *testing.T) {
+	_, err := NewFromConfig(config.Config{}, nil)
+	assert.ErrorContains(t, err, "base URL is required")
+
+	client, err := NewFromConfig(config.Config{BaseURL: "https://example.com", Login: "login", APIKey: "key"}, nil)
+	require.NoError(t, err)
+	assert.Same(t, http.DefaultClient, client.http)
+
+	cause := errors.New("keyring unavailable")
+	assert.ErrorIs(t, &AuthenticationError{Cause: cause}, cause)
 }
 
 func TestAPIErrorFormatting(t *testing.T) {

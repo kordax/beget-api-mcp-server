@@ -28,6 +28,7 @@ type HTTPClient interface {
 
 type Caller interface {
 	Call(context.Context, string, string, any) (json.RawMessage, error)
+	AuthenticationStatus() AuthenticationStatus
 }
 
 type Client struct {
@@ -35,7 +36,25 @@ type Client struct {
 	login   string
 	apiKey  string
 	http    HTTPClient
+	source  string
+	authErr error
 }
+
+type AuthenticationStatus struct {
+	Configured bool   `json:"configured"`
+	Source     string `json:"source"`
+	Message    string `json:"message"`
+}
+
+type AuthenticationError struct {
+	Cause error
+}
+
+func (e *AuthenticationError) Error() string {
+	return "Beget credentials are not configured; set BEGET_API_LOGIN and BEGET_API_KEY in the MCP server environment, or run beget-api-mcp-server credentials set --login <login> and reconnect"
+}
+
+func (e *AuthenticationError) Unwrap() error { return e.Cause }
 
 var Module = fx.Module("beget",
 	fx.Provide(
@@ -73,7 +92,7 @@ func NewClient(baseURL, login, apiKey string, httpClient HTTPClient) (*Client, e
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{baseURL: baseURL, login: login, apiKey: apiKey, http: httpClient}, nil
+	return &Client{baseURL: baseURL, login: login, apiKey: apiKey, http: httpClient, source: "explicit"}, nil
 }
 
 func NewHTTPClient(configuration config.Config) *http.Client {
@@ -81,12 +100,39 @@ func NewHTTPClient(configuration config.Config) *http.Client {
 }
 
 func NewFromConfig(configuration config.Config, httpClient *http.Client) (*Client, error) {
-	return NewClient(configuration.BaseURL, configuration.Login, configuration.APIKey, httpClient)
+	baseURL := strings.TrimRight(strings.TrimSpace(configuration.BaseURL), "/")
+	if baseURL == "" {
+		return nil, errors.New("base URL is required")
+	}
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	return &Client{
+		baseURL: baseURL,
+		login:   configuration.Login,
+		apiKey:  configuration.APIKey,
+		http:    httpClient,
+		source:  configuration.CredentialSource,
+		authErr: configuration.CredentialError,
+	}, nil
+}
+
+func (c *Client) AuthenticationStatus() AuthenticationStatus {
+	if c.login != "" && c.apiKey != "" {
+		return AuthenticationStatus{Configured: true, Source: c.source, Message: "Beget credentials are configured."}
+	}
+	return AuthenticationStatus{
+		Source:  "not-configured",
+		Message: (&AuthenticationError{Cause: c.authErr}).Error(),
+	}
 }
 
 func (c *Client) Call(ctx context.Context, section, method string, input any) (json.RawMessage, error) {
 	if !pathPartPattern.MatchString(section) || !pathPartPattern.MatchString(method) {
 		return nil, errors.New("invalid Beget API section or method")
+	}
+	if c.login == "" || c.apiKey == "" {
+		return nil, &AuthenticationError{Cause: c.authErr}
 	}
 
 	data := []byte(`{}`)

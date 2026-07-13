@@ -59,6 +59,12 @@ type APIOutput struct {
 	Answer any `json:"answer" jsonschema:"Beget API answer payload"`
 }
 
+type AuthenticationOutput struct {
+	Configured bool   `json:"configured" jsonschema:"whether Beget credentials are ready for API calls"`
+	Source     string `json:"source" jsonschema:"credential source without secret values"`
+	Message    string `json:"message" jsonschema:"safe setup guidance"`
+}
+
 type service struct {
 	client beget.Caller
 }
@@ -68,6 +74,7 @@ var Module = fx.Module("mcp", fx.Provide(New))
 func New(client beget.Caller) *mcp.Server {
 	service := &service{client: client}
 	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: version}, nil)
+	mcp.AddTool(server, readTool("beget_auth_status", "Check Beget authorization before API calls and return safe setup guidance without revealing secrets."), service.authenticationStatus)
 
 	service.addReadOnly(server, "beget_account_info", "Read hosting account plan, server, and quota information.", "user", "getAccountInfo")
 	service.addReadOnly(server, "beget_list_sites", "List sites configured on the hosting account.", "site", "getList")
@@ -82,6 +89,11 @@ func New(client beget.Caller) *mcp.Server {
 	mcp.AddTool(server, mutatingTool("beget_freeze_site", "Make a site's files read-only, optionally excluding relative paths. Requires confirm=true."), service.freezeSite)
 	mcp.AddTool(server, mutatingTool("beget_unfreeze_site", "Restore writes to a frozen site. Requires confirm=true."), service.unfreezeSite)
 	return server
+}
+
+func (s *service) authenticationStatus(context.Context, *mcp.CallToolRequest, NoArgs) (*mcp.CallToolResult, AuthenticationOutput, error) {
+	status := s.client.AuthenticationStatus()
+	return nil, AuthenticationOutput{Configured: status.Configured, Source: status.Source, Message: status.Message}, nil
 }
 
 func (s *service) addReadOnly(server *mcp.Server, name, description, section, method string) {

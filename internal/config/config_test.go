@@ -36,6 +36,7 @@ func TestFromEnvironment(t *testing.T) {
 	assert.Equal(t, "account", config.Login)
 	assert.Equal(t, "test-only-secret", config.APIKey)
 	assert.Equal(t, "https://example.invalid/api", config.BaseURL)
+	assert.Equal(t, "environment", config.CredentialSource)
 	assert.Zero(t, store.loads)
 }
 
@@ -50,6 +51,7 @@ func TestFromSourcesUsesStoredCredentials(t *testing.T) {
 	assert.Equal(t, "stored-account", config.Login)
 	assert.Equal(t, "stored-key", config.APIKey)
 	assert.Equal(t, defaultBaseURL, config.BaseURL)
+	assert.Equal(t, "system-keyring", config.CredentialSource)
 	assert.Equal(t, 1, store.loads)
 }
 
@@ -62,17 +64,24 @@ func TestFromSourcesUsesPartialEnvironmentOverride(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "environment-account", config.Login)
 	assert.Equal(t, "stored-key", config.APIKey)
+	assert.Equal(t, "environment-and-keyring", config.CredentialSource)
 }
 
-func TestFromSourcesRequiresCredentials(t *testing.T) {
+func TestFromSourcesAllowsMissingCredentials(t *testing.T) {
 	t.Setenv("BEGET_API_LOGIN", "")
 	t.Setenv("BEGET_API_KEY", "")
 	expected := errors.New("keyring unavailable")
 
-	_, err := FromSources(&fakeCredentialStore{err: expected})
-	assert.ErrorIs(t, err, expected)
-	assert.ErrorContains(t, err, "credentials set")
+	configuration, err := FromSources(&fakeCredentialStore{err: expected})
+	require.NoError(t, err)
+	assert.ErrorIs(t, configuration.CredentialError, expected)
+	assert.Equal(t, "not-configured", configuration.CredentialSource)
 
-	_, err = FromSources(nil)
-	assert.ErrorContains(t, err, "credentials are required")
+	configuration, err = FromSources(nil)
+	require.NoError(t, err)
+	assert.ErrorIs(t, configuration.CredentialError, credentials.ErrNotFound)
+
+	configuration, err = FromSources(&fakeCredentialStore{})
+	require.NoError(t, err)
+	assert.ErrorIs(t, configuration.CredentialError, credentials.ErrNotFound)
 }
