@@ -73,16 +73,21 @@ func (updater *Updater) LatestVersion(ctx context.Context) (string, error) {
 }
 
 func (updater *Updater) Upgrade(ctx context.Context, requestedVersion string) (string, error) {
-	version := requestedVersion
-	var err error
-	if version == "" || version == "latest" {
-		version, err = updater.LatestVersion(ctx)
-	} else {
-		version, err = normalizeVersion(version)
-	}
+	version, err := updater.resolveVersion(ctx, requestedVersion)
 	if err != nil {
 		return "", err
 	}
+	return updater.upgradeTo(ctx, version)
+}
+
+func (updater *Updater) resolveVersion(ctx context.Context, requestedVersion string) (string, error) {
+	if requestedVersion == "" || requestedVersion == "latest" {
+		return updater.LatestVersion(ctx)
+	}
+	return normalizeVersion(requestedVersion)
+}
+
+func (updater *Updater) upgradeTo(ctx context.Context, version string) (string, error) {
 	if version == "v"+strings.TrimPrefix(updater.currentVersion, "v") {
 		return version, nil
 	}

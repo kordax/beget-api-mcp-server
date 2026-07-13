@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"go.uber.org/fx"
 )
@@ -17,12 +18,13 @@ import (
 type Command struct {
 	updater *Updater
 	output  io.Writer
+	spinner *spinner
 }
 
 var Module = fx.Module("updater", fx.Provide(New, NewCommand))
 
 func NewCommand(updater *Updater) *Command {
-	return &Command{updater: updater, output: os.Stdout}
+	return &Command{updater: updater, output: os.Stdout, spinner: newSpinner(os.Stdout)}
 }
 
 func IsCommand(arguments []string) bool {
@@ -47,7 +49,12 @@ func (command *Command) Run(ctx context.Context, arguments []string) error {
 		if requestedVersion != "" {
 			return errors.New("upgrade --check does not accept a version")
 		}
-		latest, err := command.updater.LatestVersion(ctx)
+		var latest string
+		err := command.withSpinner("Checking for updates...", func() error {
+			var resolveErr error
+			latest, resolveErr = command.updater.LatestVersion(ctx)
+			return resolveErr
+		})
 		if err != nil {
 			return err
 		}
@@ -55,14 +62,37 @@ func (command *Command) Run(ctx context.Context, arguments []string) error {
 		return err
 	}
 
-	version, err := command.updater.Upgrade(ctx, requestedVersion)
+	var version string
+	var err error
+	if requestedVersion == "" || requestedVersion == "latest" {
+		err = command.withSpinner("Checking for updates...", func() error {
+			version, err = command.updater.LatestVersion(ctx)
+			return err
+		})
+	} else {
+		version, err = normalizeVersion(requestedVersion)
+	}
 	if err != nil {
 		return err
 	}
-	if version == "v"+command.updater.currentVersion {
+	if version == "v"+strings.TrimPrefix(command.updater.currentVersion, "v") {
 		_, err = fmt.Fprintf(command.output, "beget-api-mcp-server %s is already installed\n", version)
+		return err
+	}
+	err = command.withSpinner("Updating to "+version+"...", func() error {
+		_, upgradeErr := command.updater.upgradeTo(ctx, version)
+		return upgradeErr
+	})
+	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintf(command.output, "Updated beget-api-mcp-server to %s. Restart MCP clients to use it.\n", version)
 	return err
+}
+
+func (command *Command) withSpinner(label string, operation func() error) error {
+	if command.spinner == nil {
+		return operation()
+	}
+	return command.spinner.Run(label, operation)
 }

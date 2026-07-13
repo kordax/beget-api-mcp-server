@@ -145,7 +145,7 @@ beget-api-mcp-server upgrade --check
 beget-api-mcp-server upgrade v0.3.0
 ```
 
-The updater detects the current platform, downloads the matching release, verifies its SHA-256 entry, and replaces the executable atomically. It preserves the previous Windows executable until replacement succeeds. Set `GH_TOKEN` or `GITHUB_TOKEN` only when downloading from a private GitHub repository; public releases need no token. Restart or reconnect the MCP server after updating.
+The updater detects the current platform, downloads the matching release, verifies its SHA-256 entry, and replaces the executable atomically. Interactive terminals show a spinner while the command checks for a release and while it installs an update. Redirected output and CI logs remain plain text without terminal control sequences. The updater preserves the previous Windows executable until replacement succeeds. Set `GH_TOKEN` or `GITHUB_TOKEN` only when downloading from a private GitHub repository; public releases need no token. Restart or reconnect the MCP server after updating.
 
 Running the one-line installer again remains a supported recovery path.
 

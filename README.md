@@ -110,7 +110,7 @@ Update an installed binary in place:
 beget-api-mcp-server upgrade
 ```
 
-Use `upgrade --check` to compare versions without changing files, or pass a release such as `upgrade v0.3.0`. Self-upgrade verifies the published SHA-256 checksum before atomically replacing the executable.
+Use `upgrade --check` to compare versions without changing files, or pass a release such as `upgrade v0.3.0`. In an interactive terminal, the command shows a spinner while checking and installing. Self-upgrade verifies the published SHA-256 checksum before atomically replacing the executable.
 
 ## Credentials
 
