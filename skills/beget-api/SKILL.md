@@ -14,13 +14,15 @@ Call `beget_auth_status` before the first Beget operation when authorization sta
 If credentials are not configured:
 
 1. Tell the user that the MCP server itself is healthy and only Beget authorization is missing.
-2. Recommend setting `BEGET_API_LOGIN` and `BEGET_API_KEY` in the MCP server environment, or running `beget-api-mcp-server credentials set --login <login>` followed by reconnecting the MCP server.
+2. Recommend setting `BEGET_API_LOGIN` and `BEGET_API_KEY` in the MCP server environment, or running `beget-api-mcp-server credentials set --login <login>`. The running server retries stored credentials automatically; reconnect only if environment variables changed.
 3. Never request, echo, log, persist, or pass an API key as an MCP tool argument.
 4. Never invent credentials or retry an unauthorized operation repeatedly.
 
 The server may start without credentials. Treat an authorization error from a Beget tool as a configuration request, not as an MCP transport failure.
 
 Use `beget-api-mcp-server upgrade --check` to inspect release availability and `beget-api-mcp-server upgrade` only when the user asks to update the local server. Reconnect the MCP client afterward.
+
+The server may append a newer-version notice to a tool response after an idle period. Treat it as informational and never run the upgrade unless the user asks.
 
 ## Operations
 

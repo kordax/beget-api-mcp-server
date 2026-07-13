@@ -163,12 +163,48 @@ func TestVersionAndChecksumValidation(t *testing.T) {
 		_, err := normalizeVersion(invalid)
 		assert.Error(t, err)
 	}
+	for name, testCase := range map[string]struct {
+		candidate string
+		current   string
+		expected  bool
+	}{
+		"newer patch": {candidate: "v0.3.4", current: "v0.3.3", expected: true},
+		"newer major": {candidate: "v1.0.0", current: "v0.99.99", expected: true},
+		"same":        {candidate: "v0.3.3", current: "0.3.3"},
+		"older":       {candidate: "v0.3.2", current: "v0.3.3"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			actual, err := newerVersion(testCase.candidate, testCase.current)
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expected, actual)
+		})
+	}
+	_, err := newerVersion("v999999999999999999999999.0.0", "v1.0.0")
+	assert.ErrorContains(t, err, "parse release version")
 
 	body := []byte("archive")
 	digest := sha256.Sum256(body)
 	assert.NoError(t, verifyChecksum("release.tar.gz", body, []byte(fmt.Sprintf("%x  release.tar.gz\n", digest))))
 	assert.ErrorContains(t, verifyChecksum("missing", body, nil), "missing")
 	assert.ErrorContains(t, verifyChecksum("release.tar.gz", body, []byte(strings.Repeat("0", 64)+"  release.tar.gz\n")), "failed")
+}
+
+func TestCheckReportsAvailableRelease(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(response, `{"tag_name":"v0.3.4"}`)
+	}))
+	defer server.Close()
+
+	instance := &Updater{client: server.Client(), currentVersion: "0.3.3", apiBaseURL: server.URL}
+	status, err := instance.Check(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "v0.3.3", status.Current)
+	assert.Equal(t, "v0.3.4", status.Latest)
+	assert.True(t, status.UpdateAvailable)
+
+	instance.currentVersion = "development"
+	_, err = instance.Check(context.Background())
+	assert.ErrorContains(t, err, "inspect current version")
 }
 
 func TestExtractBinaryFromTarAndZip(t *testing.T) {

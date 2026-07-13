@@ -7,10 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
+	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +42,17 @@ func (f *fakeCaller) Call(_ context.Context, section, method string, input any) 
 
 func (*fakeCaller) AuthenticationStatus() beget.AuthenticationStatus {
 	return beget.AuthenticationStatus{Configured: true, Source: "test", Message: "configured for tests"}
+}
+
+type fakeReleaseChecker struct {
+	status updater.VersionStatus
+	err    error
+	calls  int
+}
+
+func (checker *fakeReleaseChecker) Check(context.Context) (updater.VersionStatus, error) {
+	checker.calls++
+	return checker.status, checker.err
 }
 
 func TestToolsExposeSafetyAnnotations(t *testing.T) {
@@ -73,6 +87,40 @@ func TestAuthenticationStatusDoesNotCallBeget(t *testing.T) {
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
 	assert.Zero(t, caller.calls)
+}
+
+func TestUpdateCheckRunsAfterIdleToolCallAndOnlyNotifies(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	checker := &fakeReleaseChecker{status: updater.VersionStatus{
+		Current: "v0.3.3", Latest: "v0.3.4", UpdateAvailable: true,
+	}}
+	server := newServer(&fakeCaller{}, checker, func() time.Time { return now })
+	session, closeSessions := connectServer(t, server)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	assert.Zero(t, checker.calls)
+	assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
+
+	now = now.Add(updateCheckIdleInterval)
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	assert.Equal(t, 1, checker.calls)
+	assert.Contains(t, callToolText(result), "newer beget-api-mcp-server release is available: v0.3.4")
+	assert.Contains(t, callToolText(result), "did not update itself")
+
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	assert.Equal(t, 1, checker.calls)
+	assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
+
+	now = now.Add(updateCheckIdleInterval)
+	checker.err = errors.New("release service unavailable")
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_auth_status", Arguments: map[string]any{}})
+	require.NoError(t, err, "release checks must not fail Beget tools")
+	assert.Equal(t, 2, checker.calls)
+	assert.NotContains(t, callToolText(result), "newer beget-api-mcp-server")
 }
 
 func TestMutationRequiresConfirmation(t *testing.T) {
@@ -190,9 +238,14 @@ func makeRecords(count int, value string) []DNSRecord {
 
 func connectTestClient(t *testing.T, caller beget.Caller) (*mcp.ClientSession, func()) {
 	t.Helper()
+	return connectServer(t, New(caller, nil))
+}
+
+func connectServer(t *testing.T, server *mcp.Server) (*mcp.ClientSession, func()) {
+	t.Helper()
 	ctx := context.Background()
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
-	serverSession, err := New(caller).Connect(ctx, serverTransport, nil)
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
 	require.NoError(t, err)
 	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "test"}, nil)
 	clientSession, err := client.Connect(ctx, clientTransport, nil)
@@ -201,4 +254,14 @@ func connectTestClient(t *testing.T, caller beget.Caller) (*mcp.ClientSession, f
 		_ = clientSession.Close()
 		_ = serverSession.Close()
 	}
+}
+
+func callToolText(result *mcp.CallToolResult) string {
+	var text strings.Builder
+	for _, content := range result.Content {
+		if value, ok := content.(*mcp.TextContent); ok {
+			text.WriteString(value.Text)
+		}
+	}
+	return text.String()
 }

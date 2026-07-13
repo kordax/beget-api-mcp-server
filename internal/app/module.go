@@ -9,6 +9,7 @@ import (
 	"github.com/kordax/beget-api-mcp-server/internal/credentials"
 	"github.com/kordax/beget-api-mcp-server/internal/server"
 	"github.com/kordax/beget-api-mcp-server/internal/transport"
+	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"go.uber.org/fx"
 )
 
@@ -18,5 +19,6 @@ var Module = fx.Module("app",
 	beget.Module,
 	server.Module,
 	transport.Module,
+	updater.Module,
 	fx.Invoke(RegisterLifecycle),
 )

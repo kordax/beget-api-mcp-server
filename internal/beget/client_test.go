@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kordax/beget-api-mcp-server/internal/config"
+	"github.com/kordax/beget-api-mcp-server/internal/credentials"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +30,20 @@ type failingReadCloser struct{}
 
 func (failingReadCloser) Read([]byte) (int, error) { return 0, errors.New("read failed") }
 func (failingReadCloser) Close() error             { return nil }
+
+type fakeCredentialStore struct {
+	value credentials.Credentials
+	err   error
+	loads int
+}
+
+func (store *fakeCredentialStore) Load() (credentials.Credentials, error) {
+	store.loads++
+	return store.value, store.err
+}
+
+func (*fakeCredentialStore) Save(credentials.Credentials) error { return nil }
+func (*fakeCredentialStore) Delete() error                      { return nil }
 
 func TestClientUsesPOSTAndUnwrapsAnswer(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -99,7 +114,7 @@ func TestClientConstruction(t *testing.T) {
 	httpClient := NewHTTPClient(configuration)
 	assert.Equal(t, 17*time.Second, httpClient.Timeout)
 
-	configured, err := NewFromConfig(configuration, httpClient)
+	configured, err := NewFromConfig(configuration, httpClient, nil)
 	require.NoError(t, err)
 	assert.Same(t, httpClient, configured.http)
 	assert.True(t, configured.AuthenticationStatus().Configured)
@@ -112,7 +127,8 @@ func TestConfiguredClientDefersMissingCredentialsUntilCall(t *testing.T) {
 		CredentialSource: "not-configured",
 		CredentialError:  errors.New("keyring unavailable"),
 	}
-	client, err := NewFromConfig(configuration, NewHTTPClient(configuration))
+	store := &fakeCredentialStore{err: errors.New("keyring unavailable")}
+	client, err := NewFromConfig(configuration, NewHTTPClient(configuration), store)
 	require.NoError(t, err)
 
 	status := client.AuthenticationStatus()
@@ -124,18 +140,44 @@ func TestConfiguredClientDefersMissingCredentialsUntilCall(t *testing.T) {
 	var authenticationError *AuthenticationError
 	require.ErrorAs(t, err, &authenticationError)
 	assert.ErrorContains(t, err, "credentials set")
+	assert.Equal(t, 2, store.loads)
 }
 
 func TestConfiguredClientValidatesBaseURLAndDefaultsHTTPClient(t *testing.T) {
-	_, err := NewFromConfig(config.Config{}, nil)
+	_, err := NewFromConfig(config.Config{}, nil, nil)
 	assert.ErrorContains(t, err, "base URL is required")
 
-	client, err := NewFromConfig(config.Config{BaseURL: "https://example.com", Login: "login", APIKey: "key"}, nil)
+	client, err := NewFromConfig(config.Config{BaseURL: "https://example.com", Login: "login", APIKey: "key"}, nil, nil)
 	require.NoError(t, err)
 	assert.Same(t, http.DefaultClient, client.http)
 
 	cause := errors.New("keyring unavailable")
 	assert.ErrorIs(t, &AuthenticationError{Cause: cause}, cause)
+}
+
+func TestConfiguredClientRecoversStoredCredentialsAndKeepsThemInMemory(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		assert.NoError(t, request.ParseForm())
+		assert.Equal(t, "stored-login", request.Form.Get("login"))
+		assert.Equal(t, "stored-key", request.Form.Get("passwd"))
+		_, _ = io.WriteString(response, `{"status":"success","answer":{"ok":true}}`)
+	}))
+	defer server.Close()
+
+	store := &fakeCredentialStore{value: credentials.Credentials{Login: "stored-login", APIKey: "stored-key"}}
+	configuration := config.Config{BaseURL: server.URL, CredentialSource: "not-configured", CredentialError: errors.New("keyring was unavailable at startup")}
+	client, err := NewFromConfig(configuration, server.Client(), store)
+	require.NoError(t, err)
+
+	status := client.AuthenticationStatus()
+	assert.True(t, status.Configured)
+	assert.Equal(t, "system-keyring", status.Source)
+	assert.Equal(t, 1, store.loads)
+
+	store.err = errors.New("keyring became unavailable again")
+	_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
+	require.NoError(t, err)
+	assert.Equal(t, 1, store.loads, "credentials must stay cached after a successful load")
 }
 
 func TestAPIErrorFormatting(t *testing.T) {

@@ -8,15 +8,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
 	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
+	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/fx"
 )
 
 type NoArgs struct{}
+
+const (
+	updateCheckIdleInterval = 10 * time.Minute
+	updateCheckTimeout      = 5 * time.Second
+)
 
 type DNSInput struct {
 	FQDN string `json:"fqdn" jsonschema:"fully qualified domain name managed by Beget"`
@@ -68,11 +77,28 @@ type service struct {
 	client beget.Caller
 }
 
+type releaseChecker interface {
+	Check(context.Context) (updater.VersionStatus, error)
+}
+
+type updateMonitor struct {
+	mu          sync.Mutex
+	checker     releaseChecker
+	now         func() time.Time
+	lastCommand time.Time
+}
+
 var Module = fx.Module("mcp", fx.Provide(New))
 
-func New(client beget.Caller) *mcp.Server {
+func New(client beget.Caller, checker *updater.Updater) *mcp.Server {
+	return newServer(client, checker, time.Now)
+}
+
+func newServer(client beget.Caller, checker releaseChecker, now func() time.Time) *mcp.Server {
 	service := &service{client: client}
 	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: buildinfo.Version}, nil)
+	monitor := &updateMonitor{checker: checker, now: now, lastCommand: now()}
+	server.AddReceivingMiddleware(monitor.middleware)
 	mcp.AddTool(server, readTool("beget_auth_status", "Check Beget authorization before API calls and return safe setup guidance without revealing secrets."), service.authenticationStatus)
 
 	service.addReadOnly(server, "beget_account_info", "Read hosting account plan, server, and quota information.", "user", "getAccountInfo")
@@ -88,6 +114,49 @@ func New(client beget.Caller) *mcp.Server {
 	mcp.AddTool(server, mutatingTool("beget_freeze_site", "Make a site's files read-only, optionally excluding relative paths. Requires confirm=true."), service.freezeSite)
 	mcp.AddTool(server, mutatingTool("beget_unfreeze_site", "Restore writes to a frozen site. Requires confirm=true."), service.unfreezeSite)
 	return server
+}
+
+func (monitor *updateMonitor) middleware(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, request mcp.Request) (mcp.Result, error) {
+		notice := ""
+		if monitor.shouldCheck(method) {
+			notice = monitor.check(ctx)
+		}
+		result, err := next(ctx, method, request)
+		if notice == "" || result == nil {
+			return result, err
+		}
+		if toolResult, ok := result.(*mcp.CallToolResult); ok {
+			toolResult.Content = append(toolResult.Content, &mcp.TextContent{Text: notice})
+		}
+		return result, err
+	}
+}
+
+func (monitor *updateMonitor) shouldCheck(method string) bool {
+	if method != "tools/call" || monitor.checker == nil {
+		return false
+	}
+	now := monitor.now()
+	monitor.mu.Lock()
+	defer monitor.mu.Unlock()
+	idle := now.Sub(monitor.lastCommand) >= updateCheckIdleInterval
+	monitor.lastCommand = now
+	return idle
+}
+
+func (monitor *updateMonitor) check(ctx context.Context) string {
+	checkContext, cancel := context.WithTimeout(ctx, updateCheckTimeout)
+	defer cancel()
+	status, err := monitor.checker.Check(checkContext)
+	if err != nil {
+		log.Printf("check for beget-api-mcp-server update: %v", err)
+		return ""
+	}
+	if !status.UpdateAvailable {
+		return ""
+	}
+	return fmt.Sprintf("A newer beget-api-mcp-server release is available: %s (current: %s). Run `beget-api-mcp-server upgrade` to install it; this MCP server did not update itself.", status.Latest, status.Current)
 }
 
 func (s *service) authenticationStatus(context.Context, *mcp.CallToolRequest, NoArgs) (*mcp.CallToolResult, AuthenticationOutput, error) {

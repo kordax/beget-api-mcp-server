@@ -13,8 +13,10 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/kordax/beget-api-mcp-server/internal/config"
+	"github.com/kordax/beget-api-mcp-server/internal/credentials"
 	"go.uber.org/fx"
 )
 
@@ -32,12 +34,14 @@ type Caller interface {
 }
 
 type Client struct {
-	baseURL string
-	login   string
-	apiKey  string
-	http    HTTPClient
-	source  string
-	authErr error
+	baseURL         string
+	http            HTTPClient
+	credentialMu    sync.RWMutex
+	login           string
+	apiKey          string
+	source          string
+	authErr         error
+	credentialStore credentials.Store
 }
 
 type AuthenticationStatus struct {
@@ -51,7 +55,7 @@ type AuthenticationError struct {
 }
 
 func (e *AuthenticationError) Error() string {
-	return "Beget credentials are not configured; set BEGET_API_LOGIN and BEGET_API_KEY in the MCP server environment, or run beget-api-mcp-server credentials set --login <login> and reconnect"
+	return "Beget credentials are not configured; set BEGET_API_LOGIN and BEGET_API_KEY in the MCP server environment, or run beget-api-mcp-server credentials set --login <login>; the server retries stored credentials automatically"
 }
 
 func (e *AuthenticationError) Unwrap() error { return e.Cause }
@@ -99,7 +103,7 @@ func NewHTTPClient(configuration config.Config) *http.Client {
 	return &http.Client{Timeout: configuration.Timeout}
 }
 
-func NewFromConfig(configuration config.Config, httpClient *http.Client) (*Client, error) {
+func NewFromConfig(configuration config.Config, httpClient *http.Client, store credentials.Store) (*Client, error) {
 	baseURL := strings.TrimRight(strings.TrimSpace(configuration.BaseURL), "/")
 	if baseURL == "" {
 		return nil, errors.New("base URL is required")
@@ -108,22 +112,24 @@ func NewFromConfig(configuration config.Config, httpClient *http.Client) (*Clien
 		httpClient = http.DefaultClient
 	}
 	return &Client{
-		baseURL: baseURL,
-		login:   configuration.Login,
-		apiKey:  configuration.APIKey,
-		http:    httpClient,
-		source:  configuration.CredentialSource,
-		authErr: configuration.CredentialError,
+		baseURL:         baseURL,
+		login:           configuration.Login,
+		apiKey:          configuration.APIKey,
+		http:            httpClient,
+		source:          configuration.CredentialSource,
+		authErr:         configuration.CredentialError,
+		credentialStore: store,
 	}, nil
 }
 
 func (c *Client) AuthenticationStatus() AuthenticationStatus {
-	if c.login != "" && c.apiKey != "" {
-		return AuthenticationStatus{Configured: true, Source: c.source, Message: "Beget credentials are configured."}
+	login, apiKey, source, authErr := c.credentials()
+	if login != "" && apiKey != "" {
+		return AuthenticationStatus{Configured: true, Source: source, Message: "Beget credentials are configured."}
 	}
 	return AuthenticationStatus{
 		Source:  "not-configured",
-		Message: (&AuthenticationError{Cause: c.authErr}).Error(),
+		Message: (&AuthenticationError{Cause: authErr}).Error(),
 	}
 }
 
@@ -131,8 +137,9 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 	if !pathPartPattern.MatchString(section) || !pathPartPattern.MatchString(method) {
 		return nil, errors.New("invalid Beget API section or method")
 	}
-	if c.login == "" || c.apiKey == "" {
-		return nil, &AuthenticationError{Cause: c.authErr}
+	login, apiKey, _, authErr := c.credentials()
+	if login == "" || apiKey == "" {
+		return nil, &AuthenticationError{Cause: authErr}
 	}
 
 	data := []byte(`{}`)
@@ -145,8 +152,8 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 	}
 
 	form := url.Values{
-		"login":         {c.login},
-		"passwd":        {c.apiKey},
+		"login":         {login},
+		"passwd":        {apiKey},
 		"input_format":  {"json"},
 		"output_format": {"json"},
 		"input_data":    {string(data)},
@@ -188,4 +195,45 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 		return json.RawMessage("null"), nil
 	}
 	return result.Answer, nil
+}
+
+func (c *Client) credentials() (string, string, string, error) {
+	c.credentialMu.RLock()
+	if c.login != "" && c.apiKey != "" {
+		login, apiKey, source := c.login, c.apiKey, c.source
+		c.credentialMu.RUnlock()
+		return login, apiKey, source, nil
+	}
+	c.credentialMu.RUnlock()
+
+	c.credentialMu.Lock()
+	defer c.credentialMu.Unlock()
+	if c.login != "" && c.apiKey != "" || c.credentialStore == nil {
+		return c.login, c.apiKey, c.source, c.authErr
+	}
+
+	stored, err := c.credentialStore.Load()
+	if err != nil {
+		c.authErr = err
+		return c.login, c.apiKey, c.source, c.authErr
+	}
+	stored.Login = strings.TrimSpace(stored.Login)
+	if stored.Login == "" || stored.APIKey == "" {
+		c.authErr = credentials.ErrNotFound
+		return c.login, c.apiKey, c.source, c.authErr
+	}
+
+	hasEnvironmentValue := c.login != "" || c.apiKey != ""
+	if c.login == "" {
+		c.login = stored.Login
+	}
+	if c.apiKey == "" {
+		c.apiKey = stored.APIKey
+	}
+	c.source = "system-keyring"
+	if hasEnvironmentValue {
+		c.source = "environment-and-keyring"
+	}
+	c.authErr = nil
+	return c.login, c.apiKey, c.source, nil
 }

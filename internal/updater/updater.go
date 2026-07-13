@@ -19,6 +19,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +40,12 @@ type Updater struct {
 	apiBaseURL     string
 	releaseBaseURL string
 	token          string
+}
+
+type VersionStatus struct {
+	Current         string
+	Latest          string
+	UpdateAvailable bool
 }
 
 func New() *Updater {
@@ -70,6 +77,22 @@ func (updater *Updater) LatestVersion(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("decode latest release: %w", err)
 	}
 	return normalizeVersion(release.TagName)
+}
+
+func (updater *Updater) Check(ctx context.Context) (VersionStatus, error) {
+	current, err := normalizeVersion(updater.currentVersion)
+	if err != nil {
+		return VersionStatus{}, fmt.Errorf("inspect current version: %w", err)
+	}
+	latest, err := updater.LatestVersion(ctx)
+	if err != nil {
+		return VersionStatus{}, err
+	}
+	newer, err := newerVersion(latest, current)
+	if err != nil {
+		return VersionStatus{}, err
+	}
+	return VersionStatus{Current: current, Latest: latest, UpdateAvailable: newer}, nil
 }
 
 func (updater *Updater) Upgrade(ctx context.Context, requestedVersion string) (string, error) {
@@ -183,6 +206,33 @@ func normalizeVersion(value string) (string, error) {
 		}
 	}
 	return value, nil
+}
+
+func newerVersion(candidate, current string) (bool, error) {
+	candidate, err := normalizeVersion(candidate)
+	if err != nil {
+		return false, err
+	}
+	current, err = normalizeVersion(current)
+	if err != nil {
+		return false, err
+	}
+	candidateParts := strings.Split(strings.TrimPrefix(candidate, "v"), ".")
+	currentParts := strings.Split(strings.TrimPrefix(current, "v"), ".")
+	for index := range candidateParts {
+		candidatePart, parseErr := strconv.ParseUint(candidateParts[index], 10, 64)
+		if parseErr != nil {
+			return false, fmt.Errorf("parse release version %q: %w", candidate, parseErr)
+		}
+		currentPart, parseErr := strconv.ParseUint(currentParts[index], 10, 64)
+		if parseErr != nil {
+			return false, fmt.Errorf("parse release version %q: %w", current, parseErr)
+		}
+		if candidatePart != currentPart {
+			return candidatePart > currentPart, nil
+		}
+	}
+	return false, nil
 }
 
 func verifyChecksum(name string, body, checksums []byte) error {

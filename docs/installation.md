@@ -118,6 +118,8 @@ beget-api-mcp-server --stdio
 
 This fallback is intended for containers, CI, headless systems, and external password managers. Do not place the API key in command-line arguments or commit it to an MCP configuration.
 
+If the keyring is temporarily unavailable when the MCP process starts, the server retries it on later tool calls while credentials are still missing. Once loaded, credentials remain in process memory until shutdown. Running `credentials set` can therefore repair an already running unconfigured server on its next request without exposing the API key through MCP.
+
 ## Install from a local clone
 
 This path is useful while developing the server and requires Git:
@@ -146,6 +148,8 @@ beget-api-mcp-server upgrade v0.3.0
 ```
 
 The updater detects the current platform, downloads the matching release, verifies its SHA-256 entry, and replaces the executable atomically. Interactive terminals show a spinner while the command checks for a release and while it installs an update. Redirected output and CI logs remain plain text without terminal control sequences. The updater preserves the previous Windows executable until replacement succeeds. Set `GH_TOKEN` or `GITHUB_TOKEN` only when downloading from a private GitHub repository; public releases need no token. Restart or reconnect the MCP server after updating.
+
+While running, the MCP server checks the latest release on the first tool call after ten minutes without tool calls. An available release is reported in that tool response, but is never installed automatically. A timeout or release-service error is logged and does not change the Beget tool result.
 
 Running the one-line installer again remains a supported recovery path.
 

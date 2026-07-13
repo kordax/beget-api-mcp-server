@@ -112,6 +112,8 @@ beget-api-mcp-server upgrade
 
 Use `upgrade --check` to compare versions without changing files, or pass a release such as `upgrade v0.3.0`. In an interactive terminal, the command shows a spinner while checking and installing. Self-upgrade verifies the published SHA-256 checksum before atomically replacing the executable.
 
+The running MCP server also performs a lightweight release check on the first tool call after ten minutes without tool calls. If a newer release exists, the tool response includes a notice with the installed and available versions. The server never installs that release automatically, and a failed check does not fail the requested Beget tool.
+
 ## Credentials
 
 Enable API access in the Beget control panel and create a dedicated API password. Save it once in the operating system keyring:
@@ -136,7 +138,7 @@ command = "beget-api-mcp-server"
 
 Stdio is the default transport, so no transport argument is required.
 
-The MCP server starts even when credentials are not configured. Agents can call `beget_auth_status` to detect that state and receive safe setup guidance. Actual Beget tools validate authorization only when called. The installer also provides a `beget-api` Codex skill that teaches this workflow and keeps API keys out of MCP arguments.
+The MCP server starts even when credentials are not configured. Agents can call `beget_auth_status` to detect that state and receive safe setup guidance. Actual Beget tools validate authorization only when called. If the system keyring was temporarily unavailable during startup, the server retries it while credentials are missing. After a successful load, credentials stay in process memory until the server stops, so a temporary later keyring failure does not drop authorization. The installer also provides a `beget-api` Codex skill that teaches this workflow and keeps API keys out of MCP arguments.
 
 `BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, headless Linux sessions without Secret Service, and external password-manager launchers.
 
