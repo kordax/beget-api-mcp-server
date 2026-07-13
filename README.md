@@ -82,7 +82,7 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 91.4% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 90.9% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 Run `task benchmark` to measure server startup, MCP initialization, `tools/list`, schema generation, tool calls, and local fake-server HTTP round trips. The command reports time, bytes, and allocations without contacting Beget. See the [performance baseline](docs/performance.md) for the current reference run.
 
