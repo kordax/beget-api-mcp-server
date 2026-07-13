@@ -30,6 +30,8 @@ Use the MCP tool schema as the authority for argument names, required fields, en
 
 Do not read the capability catalog routinely. If `tools/list` still leaves the correct category unclear, read `beget://capabilities` once as a local routing aid. It makes no Beget request and is never a prerequisite for a tool whose schema already identifies the operation.
 
+For a clear read-only request, call only the matching tool. Do not add speculative list, status, or detail calls when the required identifier and current state are already known. Each ordinary Beget tool call sends at most one provider request and performs no hidden preflight read. Read-before-write and result verification are explicit MCP calls used only where the safety workflow below requires them.
+
 Choose the narrowest matching category:
 
 - account and authorization

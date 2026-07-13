@@ -141,6 +141,8 @@ func TestInitializeProvidesUniversalAgentInstructions(t *testing.T) {
 	assert.Contains(t, result.Instructions, "result.changed")
 	assert.Contains(t, result.Instructions, "unknown_outcome")
 	assert.Contains(t, result.Instructions, "Never retry a mutation automatically")
+	assert.Contains(t, result.Instructions, "at most one provider request")
+	assert.Contains(t, result.Instructions, "no hidden preflight read")
 	assert.NotContains(t, result.Instructions, "BEGET_API_KEY")
 }
 
@@ -730,6 +732,7 @@ func TestPublishedOperationsCallExactEndpointsWithFilteredArguments(t *testing.T
 			assert.Equal(t, callsBefore, caller.calls, "%s must remain local", spec.name)
 			continue
 		}
+		assert.Equal(t, callsBefore+1, caller.calls, "%s must make exactly one Beget request", spec.name)
 		assert.Equal(t, spec.section, caller.section, spec.name)
 		assert.Equal(t, spec.method, caller.method, spec.name)
 		if spec.mutating {

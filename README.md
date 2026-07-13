@@ -39,6 +39,8 @@ Clients that still cannot choose a category from `tools/list` may read the optio
 
 The operation catalog is the single source for tool registration, endpoint metadata, contract tests, and the capability resource. It was checked against the ten current sections of the official Beget hosting API documentation. The server currently has no compound tools. A compound operation should be added only after a frequent multi-call scenario is demonstrated; it must remain typed, expose its steps, and retain mutation annotations and confirmation instead of hiding a change behind a read-only name.
 
+An ordinary MCP tool call makes at most one Beget HTTP request. The server does not add hidden preflight reads: any read-before-write or verification step remains an explicit agent action. The shared HTTP client reuses connections, propagates MCP cancellation through `context`, and rejects responses larger than 4 MiB without buffering the remainder.
+
 DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
 
 ## Architecture

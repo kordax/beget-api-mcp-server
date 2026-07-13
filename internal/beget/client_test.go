@@ -8,9 +8,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -30,6 +32,26 @@ type failingReadCloser struct{}
 
 func (failingReadCloser) Read([]byte) (int, error) { return 0, errors.New("read failed") }
 func (failingReadCloser) Close() error             { return nil }
+
+type countingReadCloser struct {
+	remaining int
+	read      int
+}
+
+func (reader *countingReadCloser) Read(buffer []byte) (int, error) {
+	if reader.remaining == 0 {
+		return 0, io.EOF
+	}
+	count := min(len(buffer), reader.remaining)
+	for index := range count {
+		buffer[index] = 'x'
+	}
+	reader.remaining -= count
+	reader.read += count
+	return count, nil
+}
+
+func (*countingReadCloser) Close() error { return nil }
 
 type fakeCredentialStore struct {
 	value credentials.Credentials
@@ -65,6 +87,87 @@ func TestClientUsesPOSTAndUnwrapsAnswer(t *testing.T) {
 	var domains []map[string]any
 	require.NoError(t, json.Unmarshal(answer, &domains))
 	assert.Len(t, domains, 1)
+}
+
+func TestClientReusesHTTPConnections(t *testing.T) {
+	var connections atomic.Int32
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(response, `{"status":"success","answer":true}`)
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			connections.Add(1)
+		}
+	}
+	server.Start()
+	defer server.Close()
+
+	httpClient := NewHTTPClient(config.Config{Timeout: time.Second})
+	httpClient.Transport = server.Client().Transport
+	client, err := NewClient(server.URL, "login", "key", httpClient)
+	require.NoError(t, err)
+
+	for range 2 {
+		_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
+		require.NoError(t, err)
+	}
+	assert.EqualValues(t, 1, connections.Load(), "fully read and closed responses must keep the connection reusable")
+}
+
+func TestClientCancelsHTTPRequestWithContext(t *testing.T) {
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		started <- struct{}{}
+		select {
+		case <-request.Context().Done():
+		case <-release:
+		}
+	}))
+	defer func() {
+		close(release)
+		server.Close()
+	}()
+
+	client, err := NewClient(server.URL, "login", "key", server.Client())
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, callErr := client.Call(ctx, "user", "getAccountInfo", nil)
+		result <- callErr
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Beget request did not start")
+	}
+	cancel()
+	select {
+	case callErr := <-result:
+		require.Error(t, callErr)
+		assert.ErrorIs(t, callErr, context.Canceled)
+		var transportError *TransportError
+		assert.ErrorAs(t, callErr, &transportError)
+	case <-time.After(time.Second):
+		t.Fatal("cancelled Beget request did not return")
+	}
+	assert.EqualValues(t, 1, requests.Load())
+}
+
+func TestClientStopsReadingOversizedResponseAtLimit(t *testing.T) {
+	body := &countingReadCloser{remaining: maxResponseBytes * 2}
+	client, err := NewClient("https://example.com", "login", "key", httpClientFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+	}))
+	require.NoError(t, err)
+
+	_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
+	assert.ErrorContains(t, err, "response exceeds")
+	assert.Equal(t, maxResponseBytes+1, body.read, "the client must not buffer bytes beyond the configured response limit")
 }
 
 func TestClientUnwrapsNestedMethodEnvelope(t *testing.T) {

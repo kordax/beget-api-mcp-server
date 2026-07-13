@@ -26,3 +26,5 @@ This diagnostic baseline was recorded on 2026-07-13 with Go 1.26.5 on Linux amd6
 | Concurrent local HTTP round trips | 32.65 µs | 36,057 | 146 |
 
 The `tools/list` response contained all 66 tools and occupied 144,736 serialized bytes, including operation-specific input and output schemas. The optional capability resource occupied 4,729 serialized bytes, about 31 times less, and is read only when routing remains unclear. Treat the table as a comparison point for profiling and regressions, not as a promise for other machines.
+
+CI intentionally has no latency or allocation gate yet. These values are diagnostic until repeated runs across stable runners establish normal variance and a defensible tolerance. Deterministic contract checks such as tool count and serialized catalog size remain regular tests; a timing gate should be added only after the baseline is demonstrably stable.
