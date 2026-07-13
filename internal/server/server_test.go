@@ -5,8 +5,10 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -79,6 +81,107 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	mailPassword := tools["beget_change_mailbox_password"].Annotations
 	require.NotNil(t, mailPassword.DestructiveHint)
 	assert.True(t, *mailPassword.DestructiveHint)
+	assert.True(t, mailPassword.IdempotentHint)
+	require.Contains(t, tools, "beget_add_cron_job")
+	assert.False(t, tools["beget_add_cron_job"].Annotations.IdempotentHint)
+	require.Contains(t, tools, "beget_download_file_backup")
+	assert.False(t, tools["beget_download_file_backup"].Annotations.ReadOnlyHint)
+	assert.False(t, tools["beget_download_file_backup"].Annotations.IdempotentHint)
+}
+
+func TestInitializeProvidesUniversalAgentInstructions(t *testing.T) {
+	session, closeSessions := connectTestClient(t, &fakeCaller{})
+	defer closeSessions()
+
+	result := session.InitializeResult()
+	require.NotNil(t, result)
+	assert.Contains(t, result.Instructions, "beget_auth_status")
+	assert.Contains(t, result.Instructions, "Never guess identifiers")
+	assert.Contains(t, result.Instructions, "confirm=true")
+	assert.Contains(t, result.Instructions, "Never retry a mutation automatically")
+	assert.NotContains(t, result.Instructions, "BEGET_API_KEY")
+}
+
+func TestToolsExposeExactInputContracts(t *testing.T) {
+	session, closeSessions := connectTestClient(t, &fakeCaller{})
+	defer closeSessions()
+
+	result, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	tools := make(map[string]*mcp.Tool, len(result.Tools))
+	for _, tool := range result.Tools {
+		tools[tool.Name] = tool
+	}
+
+	assertToolContract(t, tools["beget_account_info"], nil, nil)
+	assertToolContract(t, tools["beget_add_cron_job"],
+		[]string{"command", "confirm", "days", "hours", "minutes", "months", "weekdays"},
+		[]string{"command", "confirm", "days", "hours", "minutes", "months", "weekdays"},
+	)
+	assertToolContract(t, tools["beget_add_ftp_account"],
+		[]string{"confirm", "homedir", "password", "suffix"},
+		[]string{"confirm", "homedir", "password", "suffix"},
+	)
+	ftpProperties := schemaProperties(t, inputSchemaMap(t, tools["beget_add_ftp_account"]))
+	passwordSchema, ok := ftpProperties["password"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, true, passwordSchema["writeOnly"])
+	assertToolContract(t, tools["beget_change_mailbox_settings"],
+		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
+		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
+	)
+	assertToolContract(t, tools["beget_add_domain_directives"],
+		[]string{"confirm", "directives_list", "full_fqdn"},
+		[]string{"confirm", "directives_list", "full_fqdn"},
+	)
+	assertToolContract(t, tools["beget_list_backup_files"],
+		[]string{"backup_id", "path"},
+		[]string{"path"},
+	)
+
+	for _, tool := range result.Tools {
+		schema := inputSchemaMap(t, tool)
+		properties := schemaProperties(t, schema)
+		for _, forbidden := range []string{"api_key", "passwd", "bearer_token", "http_token", "master_password"} {
+			assert.NotContainsf(t, properties, forbidden, "%s must not accept credential field %s", tool.Name, forbidden)
+		}
+		assert.LessOrEqualf(t, len(properties), 8, "%s exposes too many input properties", tool.Name)
+	}
+}
+
+func TestToolContractSnapshot(t *testing.T) {
+	session, closeSessions := connectTestClient(t, &fakeCaller{})
+	defer closeSessions()
+
+	result, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	encoded, err := json.Marshal(result.Tools)
+	require.NoError(t, err)
+	assert.Len(t, result.Tools, 66)
+	assert.LessOrEqual(t, len(encoded), 66550, "tools/list contracts must remain at least 60%% smaller than the 166376-byte baseline")
+	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
+	assert.Equal(t, "0bbcd270db1350bc6732aa514665f0a9a542f341d97bce1779bc22ef080e7f06", actual, "intentional MCP contract changes require updating this snapshot")
+}
+
+func TestInvalidContractsDoNotReachBeget(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	for _, call := range []*mcp.CallToolParams{
+		{Name: "beget_account_info", Arguments: map[string]any{"domain": "example.com"}},
+		{Name: "beget_toggle_ssh", Arguments: map[string]any{"status": 2, "confirm": true}},
+		{Name: "beget_add_cron_job", Arguments: map[string]any{"confirm": true}},
+		{Name: "beget_add_cron_job", Arguments: map[string]any{
+			"minutes": "99", "hours": "*", "days": "*", "months": "*", "weekdays": "*", "command": "true", "confirm": true,
+		}},
+	} {
+		result, err := session.CallTool(context.Background(), call)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Truef(t, result.IsError, "%s should reject invalid arguments", call.Name)
+	}
+	assert.Zero(t, caller.calls)
 }
 
 func TestPublishedOperationsAreRegisteredWithMatchingSafety(t *testing.T) {
@@ -97,8 +200,9 @@ func TestPublishedOperationsAreRegisteredWithMatchingSafety(t *testing.T) {
 		tool, ok := tools[spec.name]
 		require.Truef(t, ok, "%s is not registered", spec.name)
 		if spec.mutating {
-			require.NotNilf(t, tool.Annotations.DestructiveHint, "%s must be destructive", spec.name)
-			assert.True(t, *tool.Annotations.DestructiveHint, spec.name)
+			assert.False(t, tool.Annotations.ReadOnlyHint, spec.name)
+			require.NotNilf(t, tool.Annotations.DestructiveHint, "%s must declare whether it is destructive", spec.name)
+			assert.Contains(t, schemaProperties(t, inputSchemaMap(t, tool)), "confirm", spec.name)
 			continue
 		}
 		assert.True(t, tool.Annotations.ReadOnlyHint, spec.name)
@@ -180,8 +284,11 @@ func TestMailboxPasswordChangeUsesMailEndpoint(t *testing.T) {
 	assert.False(t, result.IsError)
 	assert.Equal(t, "mail", caller.section)
 	assert.Equal(t, "changeMailboxPassword", caller.method)
-	require.IsType(t, OperationInput{}, caller.input)
-	assert.False(t, caller.input.(OperationInput).Confirm, "confirm must not reach Beget")
+	parameters := callerInputMap(t, caller.input)
+	assert.Equal(t, map[string]any{
+		"domain": "example.com", "mailbox": "admin", "mailbox_password": "new-password",
+	}, parameters)
+	assert.NotContains(t, parameters, "confirm", "confirm must not reach Beget")
 }
 
 func TestPublishedMutationRequiresConfirmation(t *testing.T) {
@@ -212,6 +319,29 @@ func TestReadToolCallsExpectedEndpoint(t *testing.T) {
 	assert.Equal(t, "getList", caller.method)
 }
 
+func TestPublishedOperationsCallExactEndpointsWithFilteredArguments(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+	arguments := validOperationArguments()
+
+	for _, spec := range publishedOperations {
+		params := arguments[spec.name]
+		if params == nil {
+			params = map[string]any{}
+		}
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: spec.name, Arguments: params})
+		require.NoError(t, err, spec.name)
+		require.NotNil(t, result, spec.name)
+		assert.False(t, result.IsError, "%s: %s", spec.name, callToolText(result))
+		assert.Equal(t, spec.section, caller.section, spec.name)
+		assert.Equal(t, spec.method, caller.method, spec.name)
+		if spec.mutating {
+			assert.NotContains(t, callerInputMap(t, caller.input), "confirm", spec.name)
+		}
+	}
+}
+
 func TestValidateDNSRecords(t *testing.T) {
 	assert.NoError(t, validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}}))
 	assert.Error(t, validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "192.0.2.1"}}, CNAME: []DNSRecord{{Value: "example.com"}}}))
@@ -226,6 +356,40 @@ func TestValidateDNSRecords(t *testing.T) {
 		DNS:   []DNSRecord{{Value: "ns.example"}},
 		DNSIP: []DNSRecord{{Value: "192.0.2.53"}},
 	}))
+	assert.Error(t, validateDNSRecords(DNSRecords{A: []DNSRecord{{Value: "not-an-ip"}}}))
+	assert.Error(t, validateDNSRecords(DNSRecords{NS: []DNSRecord{{Value: "bad domain"}}}))
+	assert.Error(t, validateDNSRecords(DNSRecords{MX: []DNSRecord{{Priority: -1, Value: "mx.example"}}}))
+}
+
+func TestSemanticInputValidation(t *testing.T) {
+	assert.NoError(t, BackupFileListInput{Path: "/example.com/public_html"}.validate())
+	assert.Error(t, BackupFileListInput{Path: "relative"}.validate())
+	assert.Error(t, RestoreFilesInput{Paths: []string{"/../escape"}}.validate())
+	assert.Error(t, DownloadFilesInput{Paths: []string{""}}.validate())
+	assert.NoError(t, CronEmailInput{}.validate())
+	assert.Error(t, CronEmailInput{Email: "not-an-email"}.validate())
+	assert.Error(t, FTPAddInput{HomeDir: "relative"}.validate())
+	assert.NoError(t, SiteAddInput{Name: "nested/example.com"}.validate())
+	assert.Error(t, SiteAddInput{Name: "../escape"}.validate())
+	assert.Error(t, VirtualDomainInput{Hostname: "bad.name"}.validate())
+	assert.Error(t, VirtualSubdomainInput{Subdomain: "bad name"}.validate())
+	assert.Error(t, DomainRegistrationInput{Hostname: "-bad"}.validate())
+	assert.Error(t, FullFQDNInput{FullFQDN: ""}.validate())
+	assert.Error(t, PHPVersionInput{FullFQDN: "bad/name"}.validate())
+	assert.Error(t, DirectivesInput{FullFQDN: "example.com", DirectivesList: []Directive{{Value: "value"}}}.validate())
+	assert.Error(t, DirectivesInput{FullFQDN: "example.com", DirectivesList: []Directive{{Name: "name"}}}.validate())
+	assert.Error(t, MailDomainInput{Domain: "bad domain"}.validate())
+	assert.Error(t, MailboxInput{Domain: "example.com", Mailbox: "bad@name"}.validate())
+	assert.Error(t, MailForwardingInput{Domain: "example.com", Mailbox: "admin", ForwardMailbox: "bad"}.validate())
+	assert.Error(t, DomainMailInput{Domain: "example.com", DomainMailbox: "bad"}.validate())
+	assert.Error(t, ClearDomainMailInput{Domain: "bad domain"}.validate())
+	assert.NoError(t, MySQLAccessInput{Access: "*"}.validate())
+	assert.NoError(t, MySQLAccessInput{Access: "192.0.2.1"}.validate())
+	assert.Error(t, MySQLAccessInput{Access: "bad access"}.validate())
+	assert.Error(t, validateDNSRecordValue("DNS_IP", "bad-ip"))
+	assert.Error(t, validateCronExpression("minutes", "*/0", 0, 59))
+	assert.Error(t, validateCronExpression("minutes", "60", 0, 59))
+	assert.Error(t, validateCronExpression("minutes", "10-2", 0, 59))
 }
 
 func TestSpecializedHandlers(t *testing.T) {
@@ -234,7 +398,7 @@ func TestSpecializedHandlers(t *testing.T) {
 	service := &service{client: caller}
 
 	_, _, err := service.getDNSRecords(ctx, nil, DNSInput{})
-	assert.ErrorContains(t, err, "fqdn is required")
+	assert.ErrorContains(t, err, "fqdn must be a valid domain name")
 	_, output, err := service.getDNSRecords(ctx, nil, DNSInput{FQDN: "example.com"})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"ok": true}, output.Answer)
@@ -244,7 +408,7 @@ func TestSpecializedHandlers(t *testing.T) {
 	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{})
 	assert.ErrorContains(t, err, "confirm must be true")
 	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true})
-	assert.ErrorContains(t, err, "fqdn is required")
+	assert.ErrorContains(t, err, "fqdn must be a valid domain name")
 	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true, FQDN: "example.com"})
 	assert.ErrorContains(t, err, "exactly one")
 	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{
@@ -325,4 +489,117 @@ func callToolText(result *mcp.CallToolResult) string {
 		}
 	}
 	return text.String()
+}
+
+func assertToolContract(t *testing.T, tool *mcp.Tool, properties, required []string) {
+	t.Helper()
+	require.NotNil(t, tool)
+	schema := inputSchemaMap(t, tool)
+	actualProperties := make([]string, 0, len(schemaProperties(t, schema)))
+	for name := range schemaProperties(t, schema) {
+		actualProperties = append(actualProperties, name)
+	}
+	actualRequired := make([]string, 0)
+	if values, ok := schema["required"].([]any); ok {
+		for _, value := range values {
+			actualRequired = append(actualRequired, value.(string))
+		}
+	}
+	assert.ElementsMatch(t, properties, actualProperties, tool.Name)
+	assert.ElementsMatch(t, required, actualRequired, tool.Name)
+}
+
+func inputSchemaMap(t *testing.T, tool *mcp.Tool) map[string]any {
+	t.Helper()
+	encoded, err := json.Marshal(tool.InputSchema)
+	require.NoError(t, err)
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &schema))
+	return schema
+}
+
+func schemaProperties(t *testing.T, schema map[string]any) map[string]any {
+	t.Helper()
+	if schema["properties"] == nil {
+		return map[string]any{}
+	}
+	properties, ok := schema["properties"].(map[string]any)
+	require.True(t, ok)
+	return properties
+}
+
+func callerInputMap(t *testing.T, input any) map[string]any {
+	t.Helper()
+	encoded, ok := input.(json.RawMessage)
+	if !ok {
+		var err error
+		encoded, err = json.Marshal(input)
+		require.NoError(t, err)
+	}
+	var parameters map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &parameters))
+	return parameters
+}
+
+func validOperationArguments() map[string]map[string]any {
+	confirm := map[string]any{"confirm": true}
+	withConfirm := func(values map[string]any) map[string]any {
+		result := make(map[string]any, len(values)+1)
+		for key, value := range values {
+			result[key] = value
+		}
+		for key, value := range confirm {
+			result[key] = value
+		}
+		return result
+	}
+	return map[string]map[string]any{
+		"beget_toggle_ssh":                   withConfirm(map[string]any{"status": 1, "ftplogin": "user_ftp"}),
+		"beget_list_backup_files":            {"backup_id": 1, "path": "/example.com/public_html"},
+		"beget_list_backup_databases":        {"backup_id": 1},
+		"beget_restore_file_backup":          withConfirm(map[string]any{"backup_id": 1, "paths": []string{"/example.com/public_html"}}),
+		"beget_restore_mysql_backup":         withConfirm(map[string]any{"backup_id": 1, "bases": []string{"user_database"}}),
+		"beget_download_file_backup":         withConfirm(map[string]any{"backup_id": 1, "paths": []string{"/example.com/public_html"}}),
+		"beget_download_mysql_backup":        withConfirm(map[string]any{"backup_id": 1, "bases": []string{"user_database"}}),
+		"beget_add_cron_job":                 withConfirm(map[string]any{"minutes": "*/5", "hours": "*", "days": "*", "months": "*", "weekdays": "*", "command": "true"}),
+		"beget_edit_cron_job":                withConfirm(map[string]any{"id": 1, "minutes": "0", "hours": "1-5", "days": "1", "months": "1,6", "weekdays": "1-5", "command": "true"}),
+		"beget_delete_cron_job":              withConfirm(map[string]any{"row_number": 1}),
+		"beget_change_cron_hidden_state":     withConfirm(map[string]any{"row_number": 1, "is_hidden": 0}),
+		"beget_set_cron_email":               withConfirm(map[string]any{"email": "admin@example.com"}),
+		"beget_add_ftp_account":              withConfirm(map[string]any{"suffix": "ftp", "homedir": "/example.com/public_html", "password": "secret"}),
+		"beget_change_ftp_password":          withConfirm(map[string]any{"suffix": "ftp", "password": "secret"}),
+		"beget_delete_ftp_account":           withConfirm(map[string]any{"suffix": "ftp"}),
+		"beget_add_mysql_database":           withConfirm(map[string]any{"suffix": "database", "password": "secret"}),
+		"beget_add_mysql_access":             withConfirm(map[string]any{"suffix": "database", "access": "localhost", "password": "secret"}),
+		"beget_delete_mysql_database":        withConfirm(map[string]any{"suffix": "database"}),
+		"beget_delete_mysql_access":          withConfirm(map[string]any{"suffix": "database", "access": "192.0.2.1"}),
+		"beget_change_mysql_access_password": withConfirm(map[string]any{"suffix": "database", "access": "db.example.com", "password": "secret"}),
+		"beget_add_site":                     withConfirm(map[string]any{"name": "example.com"}),
+		"beget_delete_site":                  withConfirm(map[string]any{"id": 1}),
+		"beget_link_domain_to_site":          withConfirm(map[string]any{"domain_id": 1, "site_id": 2}),
+		"beget_unlink_domain_from_site":      withConfirm(map[string]any{"domain_id": 1}),
+		"beget_is_site_frozen":               {"site_id": 1},
+		"beget_add_virtual_domain":           withConfirm(map[string]any{"hostname": "example", "zone_id": 1}),
+		"beget_delete_domain":                withConfirm(map[string]any{"id": 1}),
+		"beget_add_virtual_subdomain":        withConfirm(map[string]any{"subdomain": "www", "domain_id": 1}),
+		"beget_delete_subdomain":             withConfirm(map[string]any{"id": 1}),
+		"beget_check_domain_registration":    {"hostname": "example", "zone_id": 1, "period": 1},
+		"beget_get_domain_php_version":       {"full_fqdn": "example.com"},
+		"beget_change_domain_php_version":    withConfirm(map[string]any{"full_fqdn": "example.com", "php_version": "8.4", "is_cgi": true}),
+		"beget_get_domain_directives":        {"full_fqdn": "example.com"},
+		"beget_add_domain_directives":        withConfirm(map[string]any{"full_fqdn": "example.com", "directives_list": []map[string]any{{"name": "php_flag", "value": "log_errors on"}}}),
+		"beget_remove_domain_directives":     withConfirm(map[string]any{"full_fqdn": "example.com", "directives_list": []map[string]any{{"name": "php_flag", "value": "log_errors on"}}}),
+		"beget_list_mailboxes":               {"domain": "example.com"},
+		"beget_change_mailbox_password":      withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "mailbox_password": "secret"}),
+		"beget_create_mailbox":               withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "mailbox_password": "secret"}),
+		"beget_delete_mailbox":               withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin"}),
+		"beget_change_mailbox_settings":      withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "spam_filter_status": 1, "spam_filter": 20, "forward_mail_status": "forward"}),
+		"beget_add_mail_forwarding":          withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "forward_mailbox": "target@example.net"}),
+		"beget_delete_mail_forwarding":       withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "forward_mailbox": "target@example.net"}),
+		"beget_list_mail_forwarding":         {"domain": "example.com", "mailbox": "admin"},
+		"beget_set_domain_mail":              withConfirm(map[string]any{"domain": "example.com", "domain_mailbox": "admin@example.com"}),
+		"beget_clear_domain_mail":            withConfirm(map[string]any{"domain": "example.com"}),
+		"beget_site_load_details":            {"site_id": 1},
+		"beget_database_load_details":        {"db_name": "user_database"},
+	}
 }
