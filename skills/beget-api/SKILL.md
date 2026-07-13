@@ -83,4 +83,6 @@ Some explicit account operations accept a password for an FTP account, MySQL acc
 
 Mailbox passwords must contain 6 to 64 characters using only English letters, digits, and ``.,/<>?;:"'`!@#$%^&*()[]{}_+-=|~``. Require at least one letter, one digit, and one symbol. Treat local policy violations and Beget error 1208 as validation failures; report only the missing requirement and never the submitted password.
 
+Use `beget_validate_mailbox_password` when a candidate needs an explicit policy check before a mailbox mutation. It runs locally without Beget credentials or a provider request. Read `valid` and every structured violation, and never repeat the submitted password.
+
 Do not broaden the requested operation. Return Beget errors without exposing secret values.

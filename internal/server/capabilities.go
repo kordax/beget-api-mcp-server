@@ -36,8 +36,8 @@ type capabilitySection struct {
 
 var capabilitySections = map[string]capabilitySection{
 	"local": {
-		name:     "authorization",
-		scenario: "Check whether server-side credentials are ready before the first Beget call when authorization state is unknown.",
+		name:     "local diagnostics",
+		scenario: "Check whether server-side credentials are ready, inspect server capabilities, or validate a candidate mailbox password without a Beget request.",
 	},
 	"user": {
 		name:          "account",

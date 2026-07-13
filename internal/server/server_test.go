@@ -113,9 +113,15 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	for _, tool := range result.Tools {
 		tools[tool.Name] = tool
 	}
-	assert.Len(t, tools, 67)
+	assert.Len(t, tools, 68)
 	require.Contains(t, tools, "beget_auth_status")
 	require.Contains(t, tools, "beget_server_capabilities")
+	require.Contains(t, tools, "beget_validate_mailbox_password")
+	validation := tools["beget_validate_mailbox_password"].Annotations
+	assert.True(t, validation.ReadOnlyHint)
+	assert.True(t, validation.IdempotentHint)
+	require.NotNil(t, validation.OpenWorldHint)
+	assert.False(t, *validation.OpenWorldHint)
 	require.Contains(t, tools, "beget_list_sites")
 	assert.True(t, tools["beget_list_sites"].Annotations.ReadOnlyHint)
 	require.Contains(t, tools, "beget_change_dns_records")
@@ -187,6 +193,14 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 	assert.Equal(t, passwordpolicy.MailboxAllowedCharacterPattern(), mailPasswordSchema["pattern"])
 	assert.Contains(t, mailPasswordSchema["description"], "at least one letter, one digit, and one symbol")
 	assert.Equal(t, true, mailPasswordSchema["writeOnly"])
+	validator := tools["beget_validate_mailbox_password"]
+	assertToolContract(t, validator, []string{"mailbox_password"}, []string{"mailbox_password"})
+	validationPasswordSchema := schemaProperties(t, inputSchemaMap(t, validator))["mailbox_password"].(map[string]any)
+	assert.Equal(t, true, validationPasswordSchema["writeOnly"])
+	assert.Contains(t, validationPasswordSchema["description"], "at least one letter, one digit, and one symbol")
+	assert.NotContains(t, validationPasswordSchema, "minLength", "the validator must accept values that violate the length rule")
+	assert.NotContains(t, validationPasswordSchema, "maxLength", "the validator must accept values that violate the length rule")
+	assert.NotContains(t, validationPasswordSchema, "pattern", "the validator must accept unsupported characters and report them")
 	assertToolContract(t, tools["beget_change_mailbox_settings"],
 		[]string{"confirm", "domain", "dry_run", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
 		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
@@ -218,10 +232,10 @@ func TestToolContractSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	encoded, err := json.Marshal(result.Tools)
 	require.NoError(t, err)
-	assert.Len(t, result.Tools, 67)
+	assert.Len(t, result.Tools, 68)
 	assert.LessOrEqual(t, len(encoded), 170000, "typed contracts must remain compact after adding explicit dry-run results")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "44bde661bdbc408650fd72a8f310c94c4044adeee71805e0a7a733e216b06d34", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "4fb9fc16da9e441c948c80168cfa149402226a262aa28eb176fae1e7fc94acfc", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
@@ -294,7 +308,7 @@ func TestOperationCatalogLinksOfficialDocumentationAndDoesNotHideMutations(t *te
 			assert.NotRegexp(t, `^beget_(get|list|is)_`, operation.name, "a mutation must not look read-only")
 		}
 	}
-	assert.Len(t, seenNames, 67)
+	assert.Len(t, seenNames, 68)
 }
 
 func TestOperationCatalogSnapshot(t *testing.T) {
@@ -313,7 +327,7 @@ func TestOperationCatalogSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(contracts)
 	require.NoError(t, err)
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "4e12a730186c6e776aa62906b47ccf5a03087883f9eedbb9534208b4ffd613d1", actual, "intentional operation catalog changes require updating this snapshot")
+	assert.Equal(t, "0c0c2b0be36909238f2de401e142693478f0a794ef94e1376f43facae14725bd", actual, "intentional operation catalog changes require updating this snapshot")
 }
 
 func TestToolsExposeTypedOutputContracts(t *testing.T) {
@@ -596,6 +610,46 @@ func TestAuthenticationStatusDoesNotCallBeget(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.False(t, result.IsError)
+	assert.Zero(t, caller.calls)
+}
+
+func TestMailboxPasswordValidationIsLocalStructuredAndSecretSafe(t *testing.T) {
+	credentialStatus := beget.AuthenticationStatus{Configured: false, Source: "test", Message: "not configured"}
+	caller := &fakeCaller{auth: &credentialStatus}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_validate_mailbox_password", Arguments: map[string]any{"mailbox_password": "Strong1!"},
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	validation := structuredMap(t, result)["result"].(map[string]any)
+	assert.Equal(t, true, validation["valid"])
+	assert.Empty(t, validation["violations"])
+	assert.Zero(t, caller.calls)
+
+	password := "abc 12"
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_validate_mailbox_password", Arguments: map[string]any{"mailbox_password": password},
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError, "policy violations are the successful result of the validation tool")
+	validation = structuredMap(t, result)["result"].(map[string]any)
+	assert.Equal(t, false, validation["valid"])
+	violations := validation["violations"].([]any)
+	codes := make([]string, len(violations))
+	for index, value := range violations {
+		violation := value.(map[string]any)
+		codes[index] = violation["code"].(string)
+		assert.NotEmpty(t, violation["message"])
+	}
+	assert.ElementsMatch(t, []string{
+		string(passwordpolicy.ViolationMissingSymbol),
+		string(passwordpolicy.ViolationUnsupportedCharacter),
+	}, codes)
+	assert.NotContains(t, callToolText(result), password)
+	assert.NotContains(t, fmt.Sprint(result.StructuredContent), password)
 	assert.Zero(t, caller.calls)
 }
 
@@ -1128,6 +1182,7 @@ func validOperationArguments() map[string]map[string]any {
 		return result
 	}
 	return map[string]map[string]any{
+		"beget_validate_mailbox_password":    {"mailbox_password": "Strong1!"},
 		"beget_get_dns_records":              {"fqdn": "example.com"},
 		"beget_change_dns_records":           withConfirm(map[string]any{"fqdn": "example.com", "records": map[string]any{"A": []map[string]any{{"priority": 0, "value": "192.0.2.1"}}}}),
 		"beget_toggle_ssh":                   withConfirm(map[string]any{"status": 1, "ftplogin": "user_ftp"}),

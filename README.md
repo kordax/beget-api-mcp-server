@@ -20,18 +20,19 @@ Read-only tools:
 
 - Account, DNS, domain, FTP, MySQL, site, Cron, backup, mail, and load-statistics queries.
 - For example: `beget_list_mailboxes`, `beget_list_ftp_accounts`, `beget_list_mysql_databases`, `beget_list_file_backups`, and `beget_list_cron_jobs`.
+- Local authorization, server-capability, and mailbox-password policy checks that do not contact Beget.
 
 Tools that change hosting state:
 
 - All documented mutations in those sections, including `beget_change_mailbox_password`, mailbox creation and forwarding, FTP and MySQL password changes, site and domain management, backup restores, and Cron changes.
 
-The server exposes 67 typed tools in total: 65 fixed Beget endpoints plus the local `beget_auth_status` and `beget_server_capabilities` tools. It is not a universal API proxy. Every state-changing tool declares accurate destructive and idempotent hints and requires `confirm: true` for a real provider call.
+The server exposes 68 typed tools in total: 65 fixed Beget endpoints plus the local `beget_auth_status`, `beget_server_capabilities`, and `beget_validate_mailbox_password` tools. It is not a universal API proxy. Every state-changing tool declares accurate destructive and idempotent hints and requires `confirm: true` for a real provider call.
 
 Each input schema contains only the parameters accepted by its Beget method. Required fields, identifiers, enums, ranges, paths, Cron expressions, and incompatible values are checked before an HTTP request. Password fields for managed FTP, MySQL, and mail resources are marked write-only and are never part of result summaries.
 
 Every tool returns the same typed envelope with `success`, `result`, and `errors`. Read operations expose documented Beget fields through operation-specific result models. Mutations return `changed` and typed provider details, including `changed: false` when a request was rejected or its outcome is unknown. Errors use stable categories for validation, authorization, provider rejection, transport failure, confirmation failure, and unknown mutation outcomes, and include a safe next step. Undocumented provider fields are retained in `additional_properties_json` as exact JSON values, while empty lists are always returned as `[]`.
 
-Mailbox passwords contain 6 to 64 characters and use only English letters, digits, and ``.,/<>?;:"'`!@#$%^&*()[]{}_+-=|~``. At least one letter, one digit, and one symbol are required. The server checks this policy locally and returns safe guidance for Beget error 1208 without repeating the password.
+Mailbox passwords contain 6 to 64 characters and use only English letters, digits, and ``.,/<>?;:"'`!@#$%^&*()[]{}_+-=|~``. At least one letter, one digit, and one symbol are required. `beget_validate_mailbox_password` checks a candidate locally without Beget credentials or a network request and returns only `valid` plus stable violation codes and safe messages. The server also applies the same policy before mailbox mutations and returns safe guidance for Beget error 1208 without repeating the password.
 
 Every MCP client receives a short safe-operation workflow during initialization: check authorization when unknown, read current state and real identifiers before a mutation, obtain explicit approval, make one confirmed change, and verify it. The installed Codex skill adds more guidance for tool selection and error handling without duplicating the schemas.
 

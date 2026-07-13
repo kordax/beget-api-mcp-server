@@ -328,6 +328,10 @@ func (input MailboxPasswordInput) validate() error {
 	return nil
 }
 
+type MailboxPasswordValidationInput struct {
+	MailboxPassword string `json:"mailbox_password" jsonschema:"candidate mailbox password to validate locally; never repeat it in summaries or logs"`
+}
+
 type MailboxInput struct {
 	Confirmation
 	Domain  string `json:"domain" jsonschema:"domain containing the mailbox"`

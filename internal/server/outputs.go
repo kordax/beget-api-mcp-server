@@ -321,6 +321,16 @@ type Mailbox struct {
 	ForwardingMode   string  `json:"forward_mail_status"`
 }
 
+type MailboxPasswordValidationResult struct {
+	Valid      bool                       `json:"valid" jsonschema:"whether the candidate satisfies every confirmed mailbox password rule"`
+	Violations []MailboxPasswordViolation `json:"violations" jsonschema:"safe policy violations; empty when valid"`
+}
+
+type MailboxPasswordViolation struct {
+	Code    string `json:"code" jsonschema:"stable mailbox password rule code"`
+	Message string `json:"message" jsonschema:"safe rule description that never includes the candidate password"`
+}
+
 type MailForward struct {
 	LosslessFields
 	Mailbox string `json:"forward_mailbox"`

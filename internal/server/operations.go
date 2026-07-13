@@ -21,12 +21,13 @@ type operationSpec struct {
 }
 
 const (
-	authStatusDescription         = "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."
-	serverCapabilitiesDescription = "Read server version and supported Beget methods, mutations, dry-run, confirmation, idempotency, secret-reference, and rotation capabilities. This is local metadata and never reveals credential configuration."
-	getDNSDescription             = "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."
-	changeDNSDescription          = "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval."
-	freezeSiteDescription         = "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
-	unfreezeDescription           = "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
+	authStatusDescription              = "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."
+	serverCapabilitiesDescription      = "Read server version and supported Beget methods, mutations, dry-run, confirmation, idempotency, secret-reference, and rotation capabilities. This is local metadata and never reveals credential configuration."
+	validateMailboxPasswordDescription = "Validate a candidate mailbox_password against the confirmed Beget policy without a network request. Returns only stable violation codes and safe messages, never the password; Beget credentials and confirmation are not required."
+	getDNSDescription                  = "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."
+	changeDNSDescription               = "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval."
+	freezeSiteDescription              = "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
+	unfreezeDescription                = "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
 )
 
 type confirmedInput interface {
@@ -228,6 +229,14 @@ func maximumLength(property string, value int) schemaRule {
 	}}
 }
 
+func mailboxPasswordValidationTarget() schemaRule {
+	return schemaRule{property: "mailbox_password", apply: func(schema *jsonschema.Schema) {
+		schema.MinLength = nil
+		schema.MaxLength = nil
+		schema.Pattern = ""
+	}}
+}
+
 func validateOperationInput(input any) error {
 	validator, ok := input.(inputValidator)
 	if !ok {
@@ -282,6 +291,14 @@ var operationCatalog = []operationSpec{
 		"local", "serverCapabilities", false, false, true,
 		func(server *mcp.Server, service *service, description string) {
 			addToolWithSchema(server, localReadTool("beget_server_capabilities", description), service.serverCapabilities)
+		},
+	),
+	customOperation(
+		"beget_validate_mailbox_password",
+		validateMailboxPasswordDescription,
+		"local", "validateMailboxPassword", false, false, true,
+		func(server *mcp.Server, service *service, description string) {
+			addToolWithSchema(server, localReadTool("beget_validate_mailbox_password", description), service.validateMailboxPassword, mailboxPasswordValidationTarget())
 		},
 	),
 	readOperation[NoArgs, AccountInfoResult](
