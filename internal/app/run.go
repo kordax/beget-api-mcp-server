@@ -8,6 +8,7 @@ import (
 	"io"
 
 	"github.com/kordax/beget-api-mcp-server/internal/credentials"
+	"go.uber.org/dig"
 	"go.uber.org/fx"
 )
 
@@ -31,6 +32,17 @@ func Run(arguments []string, errorOutput io.Writer) int {
 		return 0
 	}
 
-	fx.New(Module).Run()
+	return runServer(errorOutput, Module)
+}
+
+func runServer(errorOutput io.Writer, options ...fx.Option) int {
+	options = append(options, fx.NopLogger)
+	application := fx.New(options...)
+	if err := application.Err(); err != nil {
+		_, _ = fmt.Fprintf(errorOutput, "start MCP server: %v\n", dig.RootCause(err))
+		return 1
+	}
+
+	application.Run()
 	return 0
 }

@@ -35,7 +35,7 @@ func FromSources(store credentials.Store) (Config, error) {
 		}
 		stored, err := store.Load()
 		if err != nil {
-			return Config{}, fmt.Errorf("load Beget credentials: %w; run credentials set or provide BEGET_API_LOGIN and BEGET_API_KEY", err)
+			return Config{}, fmt.Errorf("load Beget credentials: %w; run beget-api-mcp-server credentials set --login <login> or provide BEGET_API_LOGIN and BEGET_API_KEY", err)
 		}
 		if login == "" {
 			login = stored.Login
