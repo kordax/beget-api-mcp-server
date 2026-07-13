@@ -4,6 +4,7 @@
 package beget
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -93,6 +94,48 @@ func (e *APIError) IsCode(code int) bool {
 	return fmt.Sprint(e.Code) == strconv.Itoa(code)
 }
 
+type MethodError struct {
+	Section string
+	Method  string
+	Errors  []ProviderError
+}
+
+type ProviderError struct {
+	Code    any    `json:"error_code"`
+	Message string `json:"error_text"`
+}
+
+func (e *MethodError) Error() string {
+	if len(e.Errors) > 0 && e.Errors[0].Message != "" {
+		return fmt.Sprintf("Beget %s/%s rejected the operation: %s", e.Section, e.Method, e.Errors[0].Message)
+	}
+	return fmt.Sprintf("Beget %s/%s rejected the operation", e.Section, e.Method)
+}
+
+type TransportError struct {
+	Stage          string
+	OutcomeUnknown bool
+	Cause          error
+}
+
+func (e *TransportError) Error() string { return e.Cause.Error() }
+func (e *TransportError) Unwrap() error { return e.Cause }
+
+type InputError struct{ Cause error }
+
+func (e *InputError) Error() string { return e.Cause.Error() }
+func (e *InputError) Unwrap() error { return e.Cause }
+
+type HTTPError struct {
+	Section string
+	Method  string
+	Status  int
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("Beget %s/%s returned HTTP %d", e.Section, e.Method, e.Status)
+}
+
 func NewClient(baseURL, login, apiKey string, httpClient HTTPClient) (*Client, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" || login == "" || apiKey == "" {
@@ -152,7 +195,7 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 		var err error
 		data, err = json.Marshal(input)
 		if err != nil {
-			return nil, fmt.Errorf("encode Beget input: %w", err)
+			return nil, &InputError{Cause: fmt.Errorf("encode Beget input: %w", err)}
 		}
 	}
 
@@ -173,25 +216,25 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 
 	response, err := c.http.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("call Beget %s/%s: %w", section, method, err)
+		return nil, &TransportError{Stage: "send", OutcomeUnknown: true, Cause: fmt.Errorf("call Beget %s/%s: %w", section, method, err)}
 	}
 	defer response.Body.Close()
 
 	limited := io.LimitReader(response.Body, maxResponseBytes+1)
 	body, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, fmt.Errorf("read Beget %s/%s response: %w", section, method, err)
+		return nil, &TransportError{Stage: "read", OutcomeUnknown: true, Cause: fmt.Errorf("read Beget %s/%s response: %w", section, method, err)}
 	}
 	if len(body) > maxResponseBytes {
-		return nil, fmt.Errorf("beget %s/%s response exceeds %d bytes", section, method, maxResponseBytes)
+		return nil, &TransportError{Stage: "read", OutcomeUnknown: true, Cause: fmt.Errorf("beget %s/%s response exceeds %d bytes", section, method, maxResponseBytes)}
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("beget %s/%s returned HTTP %d", section, method, response.StatusCode)
+		return nil, &HTTPError{Section: section, Method: method, Status: response.StatusCode}
 	}
 
 	var result envelope
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("decode Beget %s/%s response: %w", section, method, err)
+		return nil, &TransportError{Stage: "decode", OutcomeUnknown: true, Cause: fmt.Errorf("decode Beget %s/%s response: %w", section, method, err)}
 	}
 	if result.Status != "success" {
 		return nil, &APIError{Section: section, Method: method, Code: result.ErrorCode, Message: result.ErrorText}
@@ -199,7 +242,26 @@ func (c *Client) Call(ctx context.Context, section, method string, input any) (j
 	if len(result.Answer) == 0 {
 		return json.RawMessage("null"), nil
 	}
-	return result.Answer, nil
+	return unwrapMethodResult(section, method, result.Answer)
+}
+
+func unwrapMethodResult(section, method string, answer json.RawMessage) (json.RawMessage, error) {
+	answer = bytes.TrimSpace(answer)
+	var nested struct {
+		Status string          `json:"status"`
+		Result json.RawMessage `json:"result"`
+		Errors []ProviderError `json:"errors"`
+	}
+	if len(answer) == 0 || answer[0] != '{' || json.Unmarshal(answer, &nested) != nil || nested.Status == "" {
+		return answer, nil
+	}
+	if nested.Status != "success" {
+		return nil, &MethodError{Section: section, Method: method, Errors: nested.Errors}
+	}
+	if len(nested.Result) == 0 {
+		return json.RawMessage("null"), nil
+	}
+	return nested.Result, nil
 }
 
 func (c *Client) credentials() (string, string, string, error) {

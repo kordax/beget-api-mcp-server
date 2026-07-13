@@ -5,7 +5,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -25,7 +24,7 @@ type NoArgs struct{}
 const (
 	updateCheckIdleInterval = 10 * time.Minute
 	updateCheckTimeout      = 5 * time.Second
-	serverInstructions      = `Use beget_auth_status before the first Beget API operation when authorization state is unknown. Read current state and obtain resource identifiers from the matching list tool before a mutation. Never guess identifiers, domains, enum values, settings, or secrets. Describe the exact target and change, obtain explicit user approval, and only then call one mutating tool with confirm=true. Verify a successful mutation with the matching read-only tool when available. Never retry a mutation automatically after a timeout or disconnect because its outcome may be unknown; read the current state first. Treat an authorization error as a credentials setup request, not as an MCP transport failure. Never request or pass a Beget API key as a tool argument.`
+	serverInstructions      = `Use beget_auth_status before the first Beget API operation when authorization state is unknown. Read current state and obtain resource identifiers from the matching list tool before a mutation. Never guess identifiers, domains, enum values, settings, or secrets. Describe the exact target and change, obtain explicit user approval, and only then call one mutating tool with confirm=true. Read success, the typed result, every machine-readable error type, and its next_step; for mutations always inspect result.changed. Verify a successful mutation with the matching read-only tool when available. Never retry a mutation automatically after a timeout, disconnect, or unknown_outcome; read the current state first. Treat authorization as a credentials setup request, not as an MCP transport failure. Never request or pass a Beget API key as a tool argument.`
 )
 
 type DNSInput struct {
@@ -62,10 +61,6 @@ type FreezeSiteInput struct {
 type UnfreezeSiteInput struct {
 	ID      int64 `json:"id" jsonschema:"site identifier returned by beget_list_sites"`
 	Confirm bool  `json:"confirm" jsonschema:"must be true to authorize changing the site freeze state"`
-}
-
-type APIOutput struct {
-	Answer any `json:"answer" jsonschema:"Beget API answer payload"`
 }
 
 type AuthenticationOutput struct {
@@ -173,74 +168,104 @@ func (monitor *updateMonitor) takeNotice() string {
 	return notice
 }
 
-func (s *service) authenticationStatus(context.Context, *mcp.CallToolRequest, NoArgs) (*mcp.CallToolResult, AuthenticationOutput, error) {
+func (s *service) authenticationStatus(context.Context, *mcp.CallToolRequest, NoArgs) (*mcp.CallToolResult, ToolOutput[AuthenticationOutput], error) {
 	status := s.client.AuthenticationStatus()
-	return nil, AuthenticationOutput{Configured: status.Configured, Source: status.Source, Message: status.Message}, nil
+	return nil, successfulOutput(AuthenticationOutput{Configured: status.Configured, Source: status.Source, Message: status.Message}), nil
 }
 
-func (s *service) getDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, input DNSInput) (*mcp.CallToolResult, APIOutput, error) {
+func (s *service) getDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, input DNSInput) (*mcp.CallToolResult, ToolOutput[DNSResult], error) {
 	if err := validateDomainName("fqdn", input.FQDN); err != nil {
-		return nil, APIOutput{}, err
+		return validationFailure[DNSResult](err)
 	}
-	return s.call(ctx, "dns", "getData", input)
+	return callRead[DNSResult](ctx, s, "dns", "getData", input)
 }
 
-func (s *service) changeDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, input ChangeDNSInput) (*mcp.CallToolResult, APIOutput, error) {
+func (s *service) changeDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, input ChangeDNSInput) (*mcp.CallToolResult, ToolOutput[MutationResult[APIBool]], error) {
 	if !input.Confirm {
-		return nil, APIOutput{}, errors.New("confirm must be true before changing live DNS records")
+		return mutationConfirmationFailure[APIBool]("beget_change_dns_records")
 	}
 	if err := validateDomainName("fqdn", input.FQDN); err != nil {
-		return nil, APIOutput{}, err
+		return mutationValidationFailure[APIBool](err)
 	}
 	if err := validateDNSRecords(input.Records); err != nil {
-		return nil, APIOutput{}, err
+		return mutationValidationFailure[APIBool](err)
 	}
-	return s.call(ctx, "dns", "changeRecords", struct {
+	return callMutation[APIBool](ctx, s, "dns", "changeRecords", struct {
 		FQDN    string     `json:"fqdn"`
 		Records DNSRecords `json:"records"`
 	}{FQDN: input.FQDN, Records: input.Records})
 }
 
-func (s *service) freezeSite(ctx context.Context, _ *mcp.CallToolRequest, input FreezeSiteInput) (*mcp.CallToolResult, APIOutput, error) {
+func (s *service) freezeSite(ctx context.Context, _ *mcp.CallToolRequest, input FreezeSiteInput) (*mcp.CallToolResult, ToolOutput[MutationResult[APIBool]], error) {
 	if !input.Confirm {
-		return nil, APIOutput{}, errors.New("confirm must be true before freezing a site")
+		return mutationConfirmationFailure[APIBool]("beget_freeze_site")
 	}
 	if input.ID <= 0 {
-		return nil, APIOutput{}, errors.New("id must be positive")
+		return mutationValidationFailure[APIBool](errors.New("id must be positive"))
 	}
 	for _, excludedPath := range input.ExcludedPaths {
 		if !isSafeRelativeHostingPath(excludedPath) {
-			return nil, APIOutput{}, fmt.Errorf("excluded path %q must be a safe relative path", excludedPath)
+			return mutationValidationFailure[APIBool](fmt.Errorf("excluded_paths contains %q, which is not a safe relative path", excludedPath))
 		}
 	}
-	return s.call(ctx, "site", "freeze", struct {
+	return callMutation[APIBool](ctx, s, "site", "freeze", struct {
 		ID            int64    `json:"id"`
 		ExcludedPaths []string `json:"excludedPaths,omitempty"`
 	}{ID: input.ID, ExcludedPaths: input.ExcludedPaths})
 }
 
-func (s *service) unfreezeSite(ctx context.Context, _ *mcp.CallToolRequest, input UnfreezeSiteInput) (*mcp.CallToolResult, APIOutput, error) {
+func (s *service) unfreezeSite(ctx context.Context, _ *mcp.CallToolRequest, input UnfreezeSiteInput) (*mcp.CallToolResult, ToolOutput[MutationResult[APIBool]], error) {
 	if !input.Confirm {
-		return nil, APIOutput{}, errors.New("confirm must be true before unfreezing a site")
+		return mutationConfirmationFailure[APIBool]("beget_unfreeze_site")
 	}
 	if input.ID <= 0 {
-		return nil, APIOutput{}, errors.New("id must be positive")
+		return mutationValidationFailure[APIBool](errors.New("id must be positive"))
 	}
-	return s.call(ctx, "site", "unfreeze", struct {
+	return callMutation[APIBool](ctx, s, "site", "unfreeze", struct {
 		ID int64 `json:"id"`
 	}{ID: input.ID})
 }
 
-func (s *service) call(ctx context.Context, section, method string, input any) (*mcp.CallToolResult, APIOutput, error) {
-	rawAnswer, err := s.client.Call(ctx, section, method, input)
+func callRead[Result any](ctx context.Context, service *service, section, method string, input any) (*mcp.CallToolResult, ToolOutput[Result], error) {
+	rawAnswer, err := service.client.Call(ctx, section, method, input)
 	if err != nil {
-		return nil, APIOutput{}, mapBegetError(section, method, input, err)
+		toolErrors := toolErrorsForBeget(mapBegetError(section, method, input, err), false)
+		return failedOutput[Result](redactToolErrors(input, toolErrors)...)
 	}
-	var answer any
-	if err := json.Unmarshal(rawAnswer, &answer); err != nil {
-		return nil, APIOutput{}, fmt.Errorf("decode Beget %s/%s answer: %w", section, method, err)
+	result, err := decodeTypedResult[Result](rawAnswer)
+	if err != nil {
+		return failedOutput[Result](ToolError{
+			Type: ErrorTransportFailure, Code: "invalid_provider_response",
+			Message:  "Beget returned a result that does not match the documented operation contract.",
+			NextStep: "Do not guess fields. Check the MCP server logs and update the result contract before retrying.",
+		})
 	}
-	return nil, APIOutput{Answer: answer}, nil
+	return nil, successfulOutput(result), nil
+}
+
+func callMutation[Details any](ctx context.Context, service *service, section, method string, input any) (*mcp.CallToolResult, ToolOutput[MutationResult[Details]], error) {
+	rawAnswer, err := service.client.Call(ctx, section, method, input)
+	if err != nil {
+		toolErrors := toolErrorsForBeget(mapBegetError(section, method, input, err), true)
+		return failedMutationOutput[Details](redactToolErrors(input, toolErrors)...)
+	}
+	details, err := decodeTypedResult[Details](rawAnswer)
+	if err != nil {
+		return failedMutationOutput[Details](ToolError{
+			Type: ErrorUnknownOutcome, Code: "mutation_outcome_unknown",
+			Message:  "Beget accepted the request but returned an unexpected mutation result.",
+			NextStep: "Do not retry the mutation. Read the current resource state first and decide from that result.",
+		})
+	}
+	if accepted, ok := any(details).(APIBool); ok && !bool(accepted) {
+		return failedMutationOutput[Details](ToolError{
+			Type: ErrorProviderRejection, Code: "provider_returned_false",
+			Message:  "Beget reported that the mutation was not applied.",
+			NextStep: "Read the current resource state and correct the request before retrying.",
+		})
+	}
+	result := MutationResult[Details]{Changed: true, Details: &details}
+	return nil, successfulOutput(result), nil
 }
 
 func validateDNSRecords(records DNSRecords) error {

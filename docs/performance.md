@@ -14,14 +14,14 @@ This diagnostic baseline was recorded on 2026-07-13 with Go 1.26.5 on Linux amd6
 
 | Benchmark | Time per operation | Bytes per operation | Allocations |
 | --- | ---: | ---: | ---: |
-| Server startup | 3.935 ms | 2,636,676 | 70,932 |
-| MCP initialize | 138.5 µs | 309,832 | 217 |
-| MCP `tools/list` | 2.767 ms | 1,971,242 | 13,317 |
-| Largest Cron input schema | 5.968 µs | 13,341 | 44 |
-| Nested directives input schema | 5.838 µs | 13,734 | 55 |
-| MCP tool call | 103.4 µs | 337,658 | 196 |
-| Concurrent MCP tool calls | 70.02 µs | 337,508 | 199 |
-| Local HTTP round trip | 27.25 µs | 10,171 | 115 |
-| Concurrent local HTTP round trips | 33.83 µs | 37,779 | 146 |
+| Server startup | 12.93 ms | 7,096,877 | 192,975 |
+| MCP initialize | 123.6 µs | 308,325 | 215 |
+| MCP `tools/list` | 9.510 ms | 6,621,932 | 40,769 |
+| Largest Cron input schema | 6.541 µs | 13,374 | 44 |
+| Nested directives input schema | 6.013 µs | 13,756 | 55 |
+| MCP tool call | 106.5 µs | 340,383 | 256 |
+| Concurrent MCP tool calls | 63.14 µs | 340,472 | 258 |
+| Local HTTP round trip | 27.37 µs | 10,302 | 116 |
+| Concurrent local HTTP round trips | 32.65 µs | 36,057 | 146 |
 
-The `tools/list` response contained all 66 tools and occupied 56,615 serialized bytes. Treat the table as a comparison point for profiling and regressions, not as a promise for other machines.
+The `tools/list` response contained all 66 tools and occupied 144,736 serialized bytes, including operation-specific input and output schemas. Treat the table as a comparison point for profiling and regressions, not as a promise for other machines.

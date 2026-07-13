@@ -29,6 +29,8 @@ The server exposes 66 typed tools in total. Each tool has a fixed Beget endpoint
 
 Each input schema contains only the parameters accepted by its Beget method. Required fields, identifiers, enums, ranges, paths, Cron expressions, and incompatible values are checked before an HTTP request. Password fields for managed FTP, MySQL, and mail resources are marked write-only and are never part of result summaries.
 
+Every tool returns the same typed envelope with `success`, `result`, and `errors`. Read operations expose documented Beget fields through operation-specific result models. Mutations return `changed` and typed provider details, including `changed: false` when a request was rejected or its outcome is unknown. Errors use stable categories for validation, authorization, provider rejection, transport failure, confirmation failure, and unknown mutation outcomes, and include a safe next step. Undocumented provider fields are retained in `additional_properties_json` as exact JSON values, while empty lists are always returned as `[]`.
+
 Mailbox passwords contain 6 to 64 characters and use only English letters, digits, and ``.,/<>?;:"'`!@#$%^&*()[]{}_+-=|~``. At least one letter, one digit, and one symbol are required. The server checks this policy locally and returns safe guidance for Beget error 1208 without repeating the password.
 
 Every MCP client receives a short safe-operation workflow during initialization: check authorization when unknown, read current state and real identifiers before a mutation, obtain explicit approval, make one confirmed change, and verify it. The installed Codex skill adds more guidance for tool selection and error handling without duplicating the schemas.

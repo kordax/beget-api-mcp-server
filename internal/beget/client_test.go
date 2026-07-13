@@ -67,6 +67,30 @@ func TestClientUsesPOSTAndUnwrapsAnswer(t *testing.T) {
 	assert.Len(t, domains, 1)
 }
 
+func TestClientUnwrapsNestedMethodEnvelope(t *testing.T) {
+	client, err := NewClient("https://example.com", "login", "key", httpClientFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"status":"success","answer":{"status":"success","result":{"row_number":42}}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+	require.NoError(t, err)
+	answer, err := client.Call(context.Background(), "cron", "add", nil)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"row_number":42}`, string(answer))
+}
+
+func TestClientReturnsNestedProviderErrors(t *testing.T) {
+	client, err := NewClient("https://example.com", "login", "key", httpClientFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"status":"success","answer":{"status":"error","errors":[{"error_code":"INVALID_DATA","error_text":"invalid suffix"}]}}`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}, nil
+	}))
+	require.NoError(t, err)
+	_, err = client.Call(context.Background(), "ftp", "add", nil)
+	require.Error(t, err)
+	var methodError *MethodError
+	require.ErrorAs(t, err, &methodError)
+	assert.Equal(t, "INVALID_DATA", methodError.Errors[0].Code)
+}
+
 func TestClientReturnsSanitizedAPIErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		_, _ = response.Write([]byte(`{"status":"error","error_code":7,"error_text":"denied"}`))
@@ -194,6 +218,8 @@ func TestClientCallFailuresAndEmptyAnswer(t *testing.T) {
 		require.NoError(t, err)
 		_, err = client.Call(context.Background(), "user", "getAccountInfo", make(chan int))
 		assert.ErrorContains(t, err, "encode Beget input")
+		var inputError *InputError
+		assert.ErrorAs(t, err, &inputError)
 	})
 
 	t.Run("create request", func(t *testing.T) {
@@ -210,6 +236,9 @@ func TestClientCallFailuresAndEmptyAnswer(t *testing.T) {
 		require.NoError(t, err)
 		_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
 		assert.ErrorContains(t, err, "call Beget user/getAccountInfo")
+		var transportError *TransportError
+		require.ErrorAs(t, err, &transportError)
+		assert.True(t, transportError.OutcomeUnknown)
 	})
 
 	for name, testCase := range map[string]struct {
@@ -240,6 +269,13 @@ func TestClientCallFailuresAndEmptyAnswer(t *testing.T) {
 			require.NoError(t, err)
 			_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
 			assert.ErrorContains(t, err, testCase.expected)
+			if name == "HTTP status" {
+				var httpError *HTTPError
+				assert.ErrorAs(t, err, &httpError)
+			} else {
+				var transportError *TransportError
+				assert.ErrorAs(t, err, &transportError)
+			}
 		})
 	}
 

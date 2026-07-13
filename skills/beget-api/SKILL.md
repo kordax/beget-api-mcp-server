@@ -53,13 +53,15 @@ Do not reuse confirmation after the target or requested state changes. Do not ma
 
 ## Errors and unknown outcomes
 
-Treat a schema or validation error as a request to inspect the tool schema and correct the named field. Do not retry with guessed fields or values.
+Read `success`, the typed `result`, and every entry in `errors`. Use the machine-readable error `type` for control flow and the supplied `next_step` for recovery. Do not parse prose to infer an error category.
 
-Treat an authorization error as a configuration request. Stop after explaining the safe setup path; do not retry repeatedly.
+Treat `validation` as a request to inspect the tool schema and correct the named field. Do not retry with guessed fields or values.
 
-Return an upstream Beget rejection with its safe message and let the user decide whether to change the request.
+Treat `authorization` as a configuration request. Stop after explaining the safe setup path; do not retry repeatedly.
 
-Never retry a mutating call automatically after a timeout, disconnect, or cancelled request. Its outcome may be unknown. Read the current state first, then ask the user before any further mutation.
+Return a `provider_rejection` with its safe message and let the user decide whether to change the request. A `transport_failure` on a read-only operation can be retried after checking connectivity and authorization.
+
+For every mutation, inspect `result.changed`. Never treat `success: false` or `changed: false` as an applied change. Never retry a mutating call automatically after `unknown_outcome`, a timeout, disconnect, or cancelled request. Read the current state first, then ask the user before any further mutation.
 
 ## Secrets
 

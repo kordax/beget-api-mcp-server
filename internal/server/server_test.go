@@ -39,9 +39,34 @@ func (f *fakeCaller) Call(_ context.Context, section, method string, input any) 
 	f.calls++
 	f.section, f.method, f.input = section, method, input
 	if f.answer == nil {
-		return json.RawMessage(`{"ok":true}`), f.err
+		return fakeAnswer(section, method), f.err
 	}
 	return f.answer, f.err
+}
+
+func fakeAnswer(section, method string) json.RawMessage {
+	switch section + "/" + method {
+	case "user/getAccountInfo", "dns/getData", "domain/checkDomainToRegister", "domain/getPhpVersion", "domain/changePhpVersion", "stat/getSiteLoad", "stat/getDbLoad":
+		return json.RawMessage(`{}`)
+	case "domain/getZoneList":
+		return json.RawMessage(`{}`)
+	case "cron/getEmail":
+		return json.RawMessage(`null`)
+	case "site/isSiteFrozen":
+		return json.RawMessage(`false`)
+	case "cron/add":
+		return json.RawMessage(`{"row_number":1}`)
+	case "cron/edit", "cron/changeHiddenState", "domain/addVirtual", "domain/addSubdomainVirtual":
+		return json.RawMessage(`1`)
+	case "user/toggleSsh":
+		return json.RawMessage(`[]`)
+	case "backup/getFileBackupList", "backup/getMysqlBackupList", "backup/getFileList", "backup/getMysqlList", "backup/getLog",
+		"cron/getList", "ftp/getList", "mysql/getList", "site/getList", "domain/getList", "domain/getSubdomainList", "domain/getDirectives",
+		"mail/getMailboxList", "mail/forwardListShow", "stat/getSitesListLoad", "stat/getDbListLoad":
+		return json.RawMessage(`[]`)
+	default:
+		return json.RawMessage(`true`)
+	}
 }
 
 func (*fakeCaller) AuthenticationStatus() beget.AuthenticationStatus {
@@ -113,6 +138,8 @@ func TestInitializeProvidesUniversalAgentInstructions(t *testing.T) {
 	assert.Contains(t, result.Instructions, "beget_auth_status")
 	assert.Contains(t, result.Instructions, "Never guess identifiers")
 	assert.Contains(t, result.Instructions, "confirm=true")
+	assert.Contains(t, result.Instructions, "result.changed")
+	assert.Contains(t, result.Instructions, "unknown_outcome")
 	assert.Contains(t, result.Instructions, "Never retry a mutation automatically")
 	assert.NotContains(t, result.Instructions, "BEGET_API_KEY")
 }
@@ -181,9 +208,128 @@ func TestToolContractSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(result.Tools)
 	require.NoError(t, err)
 	assert.Len(t, result.Tools, 66)
-	assert.LessOrEqual(t, len(encoded), 66550, "tools/list contracts must remain at least 60%% smaller than the 166376-byte baseline")
+	assert.LessOrEqual(t, len(encoded), 150000, "typed input and output contracts must remain smaller than the 166376-byte untyped baseline")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "2c376b6701dff1cae2c8a36247384a705ed98f4f32a63ef8b9da07d9f075ef19", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "466604c54e0f447098b383c6ea74662b3ab2cd806337cb2ff1bc9302f411ccc2", actual, "intentional MCP contract changes require updating this snapshot")
+}
+
+func TestToolsExposeTypedOutputContracts(t *testing.T) {
+	session, closeSessions := connectTestClient(t, &fakeCaller{})
+	defer closeSessions()
+
+	result, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	for _, tool := range result.Tools {
+		schema := outputSchemaMap(t, tool)
+		properties := schemaProperties(t, schema)
+		assert.ElementsMatch(t, []string{"success", "result", "errors"}, mapKeys(properties), tool.Name)
+		assert.NotContains(t, properties, "answer", tool.Name)
+	}
+
+	mutation := findTool(t, result.Tools, "beget_delete_domain")
+	mutationResult := schemaProperties(t, outputSchemaMap(t, mutation))["result"].(map[string]any)
+	mutationResultProperties := schemaProperties(t, mutationResult)
+	assert.Contains(t, mutationResultProperties, "changed")
+	assert.Contains(t, mutationResultProperties, "details")
+
+	read := findTool(t, result.Tools, "beget_list_sites")
+	readResult := schemaProperties(t, outputSchemaMap(t, read))["result"].(map[string]any)
+	assert.Contains(t, readResult["type"], "array")
+
+	errorItems := schemaProperties(t, outputSchemaMap(t, read))["errors"].(map[string]any)["items"].(map[string]any)
+	errorType := schemaProperties(t, errorItems)["type"].(map[string]any)
+	assert.ElementsMatch(t, []any{
+		string(ErrorValidation), string(ErrorAuthorization), string(ErrorProviderRejection),
+		string(ErrorTransportFailure), string(ErrorConfirmationFailure), string(ErrorUnknownOutcome),
+	}, errorType["enum"])
+}
+
+func TestToolResultsNormalizeAndPreserveProviderData(t *testing.T) {
+	caller := &fakeCaller{answer: json.RawMessage(`[{"id":"125","path":"site/public_html","domains":[],"new_field":{"enabled":true}}]`)}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "beget_list_sites", Arguments: map[string]any{}})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	output := structuredMap(t, result)
+	assert.Equal(t, true, output["success"])
+	assert.Empty(t, output["errors"])
+	sites := output["result"].([]any)
+	site := sites[0].(map[string]any)
+	assert.EqualValues(t, 125, site["id"])
+	assert.Equal(t, []any{}, site["domains"])
+	extra := site["additional_properties_json"].(map[string]any)
+	assert.JSONEq(t, `{"enabled":true}`, extra["new_field"].(string))
+
+	caller.answer = json.RawMessage(`true`)
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_delete_domain", Arguments: map[string]any{"id": 125, "confirm": true},
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	mutation := structuredMap(t, result)["result"].(map[string]any)
+	assert.Equal(t, true, mutation["changed"])
+	assert.Equal(t, true, mutation["details"])
+}
+
+func TestToolErrorsUseStableMachineReadableCategories(t *testing.T) {
+	tests := map[string]struct {
+		name      string
+		arguments map[string]any
+		err       error
+		expected  ErrorType
+	}{
+		"authorization": {name: "beget_list_domains", arguments: map[string]any{}, err: &beget.AuthenticationError{}, expected: ErrorAuthorization},
+		"provider rejection": {name: "beget_list_domains", arguments: map[string]any{}, err: &beget.MethodError{
+			Section: "domain", Method: "getList", Errors: []beget.ProviderError{{Code: "LIMIT_ERROR", Message: "limit reached"}},
+		}, expected: ErrorProviderRejection},
+		"transport failure": {name: "beget_list_domains", arguments: map[string]any{}, err: &beget.TransportError{
+			Stage: "send", OutcomeUnknown: true, Cause: errors.New("connection reset"),
+		}, expected: ErrorTransportFailure},
+		"unknown mutation outcome": {name: "beget_delete_domain", arguments: map[string]any{"id": 125, "confirm": true}, err: &beget.TransportError{
+			Stage: "read", OutcomeUnknown: true, Cause: errors.New("connection reset"),
+		}, expected: ErrorUnknownOutcome},
+	}
+
+	for name, testCase := range tests {
+		t.Run(name, func(t *testing.T) {
+			caller := &fakeCaller{err: testCase.err}
+			session, closeSessions := connectTestClient(t, caller)
+			defer closeSessions()
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: testCase.name, Arguments: testCase.arguments})
+			require.NoError(t, err)
+			assert.True(t, result.IsError)
+			output := structuredMap(t, result)
+			errorsList := output["errors"].([]any)
+			assert.Equal(t, string(testCase.expected), errorsList[0].(map[string]any)["type"])
+			assert.NotEmpty(t, errorsList[0].(map[string]any)["next_step"])
+			if testCase.expected == ErrorUnknownOutcome {
+				assert.Equal(t, false, output["result"].(map[string]any)["changed"])
+			}
+		})
+	}
+}
+
+func TestProviderErrorsNeverCopyInputSecrets(t *testing.T) {
+	password := "Secret123!"
+	caller := &fakeCaller{err: &beget.MethodError{
+		Section: "ftp", Method: "changePassword",
+		Errors: []beget.ProviderError{{Code: "REJECTED", Message: "provider rejected " + password}},
+	}}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_change_ftp_password", Arguments: map[string]any{
+			"suffix": "account", "password": password, "confirm": true,
+		},
+	})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.NotContains(t, callToolText(result), password)
+	assert.NotContains(t, fmt.Sprint(result.StructuredContent), password)
+	assert.Contains(t, callToolText(result), "[REDACTED]")
 }
 
 func TestInvalidContractsDoNotReachBeget(t *testing.T) {
@@ -323,6 +469,9 @@ func TestMutationRequiresConfirmation(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.IsError)
+	output := structuredMap(t, result)
+	assert.Equal(t, string(ErrorConfirmationFailure), output["errors"].([]any)[0].(map[string]any)["type"])
+	assert.Equal(t, false, output["result"].(map[string]any)["changed"])
 	assert.Zero(t, caller.calls, "unconfirmed mutation reached the Beget client")
 }
 
@@ -426,6 +575,8 @@ func TestSensitiveSchemaErrorsRedactManagedPasswords(t *testing.T) {
 	assert.True(t, result.IsError)
 	assert.Contains(t, callToolText(result), "[REDACTED]")
 	assert.NotContains(t, callToolText(result), password)
+	assert.Equal(t, string(ErrorValidation), structuredMap(t, result)["errors"].([]any)[0].(map[string]any)["type"])
+	assert.NotContains(t, fmt.Sprint(result.StructuredContent), password)
 
 	mailboxPassword := "abcdef1"
 	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
@@ -545,20 +696,31 @@ func TestSpecializedHandlers(t *testing.T) {
 	caller := &fakeCaller{}
 	service := &service{client: caller}
 
-	_, _, err := service.getDNSRecords(ctx, nil, DNSInput{})
-	assert.ErrorContains(t, err, "fqdn must be a valid domain name")
-	_, output, err := service.getDNSRecords(ctx, nil, DNSInput{FQDN: "example.com"})
+	result, output, err := service.getDNSRecords(ctx, nil, DNSInput{})
 	require.NoError(t, err)
-	assert.Equal(t, map[string]any{"ok": true}, output.Answer)
+	assert.True(t, result.IsError)
+	assert.Equal(t, ErrorValidation, output.Errors[0].Type)
+	caller.answer = json.RawMessage(`{"ok":true}`)
+	_, output, err = service.getDNSRecords(ctx, nil, DNSInput{FQDN: "example.com"})
+	require.NoError(t, err)
+	require.NotNil(t, output.Result)
+	assert.Equal(t, `true`, output.Result.AdditionalPropertiesJSON["ok"])
 	assert.Equal(t, "dns", caller.section)
 	assert.Equal(t, "getData", caller.method)
+	caller.answer = nil
 
-	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{})
-	assert.ErrorContains(t, err, "confirm must be true")
-	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true})
-	assert.ErrorContains(t, err, "fqdn must be a valid domain name")
-	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true, FQDN: "example.com"})
-	assert.ErrorContains(t, err, "exactly one")
+	result, changeOutput, err := service.changeDNSRecords(ctx, nil, ChangeDNSInput{})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Equal(t, ErrorConfirmationFailure, changeOutput.Errors[0].Type)
+	assert.False(t, changeOutput.Result.Changed)
+	result, changeOutput, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Equal(t, ErrorValidation, changeOutput.Errors[0].Type)
+	result, changeOutput, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{Confirm: true, FQDN: "example.com"})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
 	_, _, err = service.changeDNSRecords(ctx, nil, ChangeDNSInput{
 		Confirm: true,
 		FQDN:    "example.com",
@@ -567,22 +729,29 @@ func TestSpecializedHandlers(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "changeRecords", caller.method)
 
-	_, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{})
-	assert.ErrorContains(t, err, "confirm must be true")
-	_, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{Confirm: true})
-	assert.ErrorContains(t, err, "id must be positive")
+	result, freezeOutput, err := service.freezeSite(ctx, nil, FreezeSiteInput{})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Equal(t, ErrorConfirmationFailure, freezeOutput.Errors[0].Type)
+	result, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{Confirm: true})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
 	for _, excludedPath := range []string{"", "/absolute", "../escape"} {
-		_, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{ID: 42, Confirm: true, ExcludedPaths: []string{excludedPath}})
-		assert.ErrorContains(t, err, "safe relative path")
+		result, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{ID: 42, Confirm: true, ExcludedPaths: []string{excludedPath}})
+		require.NoError(t, err)
+		assert.True(t, result.IsError)
 	}
 	_, _, err = service.freezeSite(ctx, nil, FreezeSiteInput{ID: 42, Confirm: true, ExcludedPaths: []string{"cache"}})
 	require.NoError(t, err)
 	assert.Equal(t, "freeze", caller.method)
 
-	_, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{})
-	assert.ErrorContains(t, err, "confirm must be true")
-	_, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{Confirm: true})
-	assert.ErrorContains(t, err, "id must be positive")
+	result, unfreezeOutput, err := service.unfreezeSite(ctx, nil, UnfreezeSiteInput{})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Equal(t, ErrorConfirmationFailure, unfreezeOutput.Errors[0].Type)
+	result, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{Confirm: true})
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
 	_, _, err = service.unfreezeSite(ctx, nil, UnfreezeSiteInput{ID: 42, Confirm: true})
 	require.NoError(t, err)
 	assert.Equal(t, "unfreeze", caller.method)
@@ -592,13 +761,17 @@ func TestServiceCallPropagatesAndDecodesErrors(t *testing.T) {
 	caller := &fakeCaller{err: errors.New("Beget unavailable")}
 	service := &service{client: caller}
 
-	_, _, err := service.call(context.Background(), "user", "getAccountInfo", nil)
-	assert.ErrorContains(t, err, "Beget unavailable")
+	result, output, err := callRead[AccountInfoResult](context.Background(), service, "user", "getAccountInfo", nil)
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Equal(t, ErrorTransportFailure, output.Errors[0].Type)
 
 	caller.err = nil
 	caller.answer = json.RawMessage(`not-json`)
-	_, _, err = service.call(context.Background(), "user", "getAccountInfo", nil)
-	assert.ErrorContains(t, err, "decode Beget user/getAccountInfo answer")
+	result, output, err = callRead[AccountInfoResult](context.Background(), service, "user", "getAccountInfo", nil)
+	require.NoError(t, err)
+	assert.True(t, result.IsError)
+	assert.Equal(t, "invalid_provider_response", output.Errors[0].Code)
 }
 
 func makeRecords(count int, value string) []DNSRecord {
@@ -664,6 +837,43 @@ func inputSchemaMap(t *testing.T, tool *mcp.Tool) map[string]any {
 	var schema map[string]any
 	require.NoError(t, json.Unmarshal(encoded, &schema))
 	return schema
+}
+
+func outputSchemaMap(t *testing.T, tool *mcp.Tool) map[string]any {
+	t.Helper()
+	encoded, err := json.Marshal(tool.OutputSchema)
+	require.NoError(t, err)
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &schema))
+	return schema
+}
+
+func structuredMap(t *testing.T, result *mcp.CallToolResult) map[string]any {
+	t.Helper()
+	encoded, err := json.Marshal(result.StructuredContent)
+	require.NoError(t, err)
+	var output map[string]any
+	require.NoError(t, json.Unmarshal(encoded, &output))
+	return output
+}
+
+func findTool(t *testing.T, tools []*mcp.Tool, name string) *mcp.Tool {
+	t.Helper()
+	for _, tool := range tools {
+		if tool.Name == name {
+			return tool
+		}
+	}
+	require.FailNow(t, "tool not found", name)
+	return nil
+}
+
+func mapKeys(values map[string]any) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 func schemaProperties(t *testing.T, schema map[string]any) map[string]any {
