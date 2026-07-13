@@ -15,7 +15,7 @@ import (
 	"go.uber.org/fx"
 )
 
-var version = "0.2.2"
+var version = "0.2.3"
 
 type NoArgs struct{}
 
