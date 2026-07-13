@@ -99,14 +99,8 @@ func newServer(client beget.Caller, checker releaseChecker, now func() time.Time
 	})
 	monitor := &updateMonitor{checker: checker, now: now, lastCommand: now()}
 	server.AddReceivingMiddleware(redactSensitiveToolErrors, monitor.middleware)
-	addToolWithSchema(server, localReadTool("beget_auth_status", "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."), service.authenticationStatus)
-
+	addCapabilitiesResource(server)
 	service.addOperations(server)
-
-	addToolWithSchema(server, readTool("beget_get_dns_records", "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."), service.getDNSRecords)
-	addToolWithSchema(server, mutatingTool("beget_change_dns_records", "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval.", true, true), service.changeDNSRecords)
-	addToolWithSchema(server, mutatingTool("beget_freeze_site", "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval.", true, true), service.freezeSite)
-	addToolWithSchema(server, mutatingTool("beget_unfreeze_site", "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval.", true, true), service.unfreezeSite)
 	return server
 }
 

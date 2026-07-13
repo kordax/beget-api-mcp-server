@@ -210,17 +210,12 @@ func callToolErrorText(result *mcp.CallToolResult) string {
 }
 
 func isMutatingTool(name string) bool {
-	for _, operation := range publishedOperations {
+	for _, operation := range operationCatalog {
 		if operation.name == name {
 			return operation.mutating
 		}
 	}
-	switch name {
-	case "beget_change_dns_records", "beget_freeze_site", "beget_unfreeze_site":
-		return true
-	default:
-		return false
-	}
+	return false
 }
 
 func toolErrorReferencesField(result *mcp.CallToolResult, field string) bool {

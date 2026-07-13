@@ -15,10 +15,18 @@ import (
 )
 
 type operationSpec struct {
-	name, section, method string
-	mutating              bool
-	register              func(*mcp.Server, *service)
+	name, description, section, method string
+	mutating                           bool
+	register                           func(*mcp.Server, *service)
 }
+
+const (
+	authStatusDescription = "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."
+	getDNSDescription     = "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."
+	changeDNSDescription  = "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval."
+	freezeSiteDescription = "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
+	unfreezeDescription   = "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
+)
 
 type confirmedInput interface {
 	confirmed() bool
@@ -34,14 +42,14 @@ type schemaRule struct {
 }
 
 func (s *service) addOperations(server *mcp.Server) {
-	for _, spec := range publishedOperations {
+	for _, spec := range operationCatalog {
 		spec.register(server, s)
 	}
 }
 
 func readOperation[Input, Result any](name, description, section, method string, rules ...schemaRule) operationSpec {
 	return operationSpec{
-		name: name, section: section, method: method,
+		name: name, description: description, section: section, method: method,
 		register: func(server *mcp.Server, service *service) {
 			addToolWithSchema(server, readTool(name, description), func(ctx context.Context, _ *mcp.CallToolRequest, input Input) (*mcp.CallToolResult, ToolOutput[Result], error) {
 				if err := validateOperationInput(input); err != nil {
@@ -55,7 +63,7 @@ func readOperation[Input, Result any](name, description, section, method string,
 
 func mutationOperation[Input confirmedInput, Details any](name, description, section, method string, destructive, idempotent bool, rules ...schemaRule) operationSpec {
 	return operationSpec{
-		name: name, section: section, method: method,
+		name: name, description: description, section: section, method: method,
 		mutating: true,
 		register: func(server *mcp.Server, service *service) {
 			addToolWithSchema(server, mutatingTool(name, description, destructive, idempotent), func(ctx context.Context, _ *mcp.CallToolRequest, input Input) (*mcp.CallToolResult, ToolOutput[MutationResult[Details]], error) {
@@ -72,6 +80,13 @@ func mutationOperation[Input confirmedInput, Details any](name, description, sec
 				return callMutation[Details](ctx, service, section, method, parameters)
 			}, rules...)
 		},
+	}
+}
+
+func customOperation(name, description, section, method string, mutating bool, register func(*mcp.Server, *service)) operationSpec {
+	return operationSpec{
+		name: name, description: description, section: section, method: method,
+		mutating: mutating, register: register,
 	}
 }
 
@@ -222,7 +237,15 @@ func withoutConfirmation(input any) (json.RawMessage, error) {
 	return json.Marshal(parameters)
 }
 
-var publishedOperations = []operationSpec{
+var operationCatalog = []operationSpec{
+	customOperation(
+		"beget_auth_status",
+		authStatusDescription,
+		"local", "authStatus", false,
+		func(server *mcp.Server, service *service) {
+			addToolWithSchema(server, localReadTool("beget_auth_status", authStatusDescription), service.authenticationStatus)
+		},
+	),
 	readOperation[NoArgs, AccountInfoResult](
 		"beget_account_info",
 		"Read the hosting plan, server details, quotas, and current account usage. Use this before changes that may exceed account limits.",
@@ -249,6 +272,22 @@ var publishedOperations = []operationSpec{
 	mutationOperation[CronHiddenInput, CronTaskResult]("beget_change_cron_hidden_state", "Set is_hidden for the Cron task row_number from beget_list_cron_jobs. Verify with that list afterward. Requires explicit confirm=true after user approval.", "cron", "changeHiddenState", false, true),
 	readOperation[NoArgs, *string]("beget_cron_email", "Read the email address that receives Cron command output, or null when it is not configured.", "cron", "getEmail"),
 	mutationOperation[CronEmailInput, APIBool]("beget_set_cron_email", "Set the Cron notification email, or pass an empty string to clear it. Verify with beget_cron_email. Requires explicit confirm=true after user approval.", "cron", "setEmail", false, true),
+	customOperation(
+		"beget_get_dns_records",
+		getDNSDescription,
+		"dns", "getData", false,
+		func(server *mcp.Server, service *service) {
+			addToolWithSchema(server, readTool("beget_get_dns_records", getDNSDescription), service.getDNSRecords)
+		},
+	),
+	customOperation(
+		"beget_change_dns_records",
+		changeDNSDescription,
+		"dns", "changeRecords", true,
+		func(server *mcp.Server, service *service) {
+			addToolWithSchema(server, mutatingTool("beget_change_dns_records", changeDNSDescription, true, true), service.changeDNSRecords)
+		},
+	),
 	readOperation[NoArgs, []FTPAccount]("beget_list_ftp_accounts", "List additional FTP accounts with their full logins and home directories. Use the suffix portion for FTP mutations.", "ftp", "getList"),
 	mutationOperation[FTPAddInput, APIBool]("beget_add_ftp_account", "Create an additional FTP account for homedir using the requested suffix and password. Verify with beget_list_ftp_accounts. Requires explicit confirm=true after user approval.", "ftp", "add", false, false),
 	mutationOperation[FTPPasswordInput, APIBool]("beget_change_ftp_password", "Change the password for the FTP account suffix from beget_list_ftp_accounts. Never repeat the password in the result summary. Requires explicit confirm=true after user approval.", "ftp", "changePassword", true, true),
@@ -264,6 +303,22 @@ var publishedOperations = []operationSpec{
 	mutationOperation[SiteDeleteInput, APIBool]("beget_delete_site", "Delete the site id from beget_list_sites and unlink its domains. Verify with beget_list_sites. Requires explicit confirm=true after user approval.", "site", "delete", true, true),
 	mutationOperation[SiteLinkInput, APIBool]("beget_link_domain_to_site", "Link domain_id from beget_list_domains to site_id from beget_list_sites. Verify with beget_list_sites. Requires explicit confirm=true after user approval.", "site", "linkDomain", true, true),
 	mutationOperation[SiteUnlinkInput, APIBool]("beget_unlink_domain_from_site", "Unlink domain_id from its current site. Read beget_list_domains and beget_list_sites first, then verify afterward. Requires explicit confirm=true after user approval.", "site", "unlinkDomain", true, true),
+	customOperation(
+		"beget_freeze_site",
+		freezeSiteDescription,
+		"site", "freeze", true,
+		func(server *mcp.Server, service *service) {
+			addToolWithSchema(server, mutatingTool("beget_freeze_site", freezeSiteDescription, true, true), service.freezeSite)
+		},
+	),
+	customOperation(
+		"beget_unfreeze_site",
+		unfreezeDescription,
+		"site", "unfreeze", true,
+		func(server *mcp.Server, service *service) {
+			addToolWithSchema(server, mutatingTool("beget_unfreeze_site", unfreezeDescription, true, true), service.unfreezeSite)
+		},
+	),
 	readOperation[SiteStatusInput, APIBool]("beget_is_site_frozen", "Read whether files for site_id from beget_list_sites are currently frozen against writes.", "site", "isSiteFrozen"),
 	readOperation[NoArgs, []Domain]("beget_list_domains", "List domains with their ids, full names, registration state, and Beget-control status. Use these ids for domain and site-link operations.", "domain", "getList"),
 	readOperation[NoArgs, map[string]DomainZone]("beget_list_domain_zones", "List domain zones with zone ids, prices, and allowed registration periods. Use zone_id and its limits for registration checks.", "domain", "getZoneList"),

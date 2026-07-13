@@ -35,6 +35,10 @@ Mailbox passwords contain 6 to 64 characters and use only English letters, digit
 
 Every MCP client receives a short safe-operation workflow during initialization: check authorization when unknown, read current state and real identifiers before a mutation, obtain explicit approval, make one confirmed change, and verify it. The installed Codex skill adds more guidance for tool selection and error handling without duplicating the schemas.
 
+Clients that still cannot choose a category from `tools/list` may read the optional `beget://capabilities` resource. It is a compact local index that groups inspect and change tools by scenario and links each category to the official Beget documentation. Reading it never calls Beget and is not a required step before normal operations. Critical safety rules remain in initialization instructions and tool schemas for clients that do not expose MCP resources.
+
+The operation catalog is the single source for tool registration, endpoint metadata, contract tests, and the capability resource. It was checked against the ten current sections of the official Beget hosting API documentation. The server currently has no compound tools. A compound operation should be added only after a frequent multi-call scenario is demonstrated; it must remain typed, expose its steps, and retain mutation annotations and confirmation instead of hiding a change behind a read-only name.
+
 DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
 
 ## Architecture
@@ -86,9 +90,9 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 91.1% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 90.6% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
-Run `task benchmark` to measure server startup, MCP initialization, `tools/list`, schema generation, tool calls, and local fake-server HTTP round trips. The command reports time, bytes, and allocations without contacting Beget. See the [performance baseline](docs/performance.md) for the current reference run.
+Run `task benchmark` to measure server startup, MCP initialization, `tools/list`, the capability resource, schema generation, tool calls, and local fake-server HTTP round trips. The command reports time, bytes, and allocations without contacting Beget. See the [performance baseline](docs/performance.md) for the current reference run.
 
 Run `task mcp-inspector` to start the pinned official MCP Inspector for interactive protocol and tool testing. This command requires Node.js and npm with `npx`.
 

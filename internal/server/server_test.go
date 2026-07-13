@@ -213,6 +213,97 @@ func TestToolContractSnapshot(t *testing.T) {
 	assert.Equal(t, "466604c54e0f447098b383c6ea74662b3ab2cd806337cb2ff1bc9302f411ccc2", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
+func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	listed, err := session.ListResources(context.Background(), nil)
+	require.NoError(t, err)
+	require.Len(t, listed.Resources, 1)
+	resource := listed.Resources[0]
+	assert.Equal(t, capabilitiesResourceURI, resource.URI)
+	assert.Equal(t, capabilitiesResourceMIMEType, resource.MIMEType)
+	assert.Contains(t, resource.Description, "only when")
+
+	read, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: capabilitiesResourceURI})
+	require.NoError(t, err)
+	require.Len(t, read.Contents, 1)
+	content := read.Contents[0].Text
+	assert.EqualValues(t, len(content), resource.Size)
+	assert.LessOrEqual(t, len(content), 6000, "optional routing catalog must stay cheaper than another tools/list response")
+
+	var catalog capabilityCatalog
+	require.NoError(t, json.Unmarshal([]byte(content), &catalog))
+	assert.Equal(t, 1, catalog.Version)
+	assert.Contains(t, catalog.Usage, "Read only when tool selection remains unclear")
+	assert.Len(t, catalog.Categories, len(capabilitySections))
+
+	actualTools := make(map[string]bool, len(operationCatalog))
+	for _, category := range catalog.Categories {
+		for _, name := range category.Inspect {
+			require.NotContains(t, actualTools, name)
+			actualTools[name] = false
+		}
+		for _, name := range category.Change {
+			require.NotContains(t, actualTools, name)
+			actualTools[name] = true
+		}
+	}
+	require.Len(t, actualTools, len(operationCatalog))
+	for _, operation := range operationCatalog {
+		mutating, exists := actualTools[operation.name]
+		assert.True(t, exists, operation.name)
+		assert.Equal(t, operation.mutating, mutating, operation.name)
+	}
+	assert.Zero(t, caller.calls, "reading the local catalog must not call Beget")
+}
+
+func TestOperationCatalogLinksOfficialDocumentationAndDoesNotHideMutations(t *testing.T) {
+	seenNames := make(map[string]struct{}, len(operationCatalog))
+	seenEndpoints := make(map[string]string, len(operationCatalog))
+	for _, operation := range operationCatalog {
+		require.NotEmpty(t, operation.name)
+		require.NotEmpty(t, operation.description, operation.name)
+		require.NotEmpty(t, operation.method, operation.name)
+		require.NotContains(t, seenNames, operation.name)
+		seenNames[operation.name] = struct{}{}
+
+		section, exists := capabilitySections[operation.section]
+		require.Truef(t, exists, "%s has unknown section %q", operation.name, operation.section)
+		if operation.section == "local" {
+			assert.Empty(t, section.documentation)
+			continue
+		}
+		assert.Contains(t, section.documentation, "https://beget.com/ru/kb/api/", operation.name)
+		endpoint := operation.section + "/" + operation.method
+		assert.NotContainsf(t, seenEndpoints, endpoint, "%s duplicates endpoint used by %s", operation.name, seenEndpoints[endpoint])
+		seenEndpoints[endpoint] = operation.name
+		if operation.mutating {
+			assert.NotRegexp(t, `^beget_(get|list|is)_`, operation.name, "a mutation must not look read-only")
+		}
+	}
+	assert.Len(t, seenNames, 66)
+}
+
+func TestOperationCatalogSnapshot(t *testing.T) {
+	type contract struct {
+		Name, Description, Section, Method string
+		Mutating                           bool
+	}
+	contracts := make([]contract, 0, len(operationCatalog))
+	for _, operation := range operationCatalog {
+		contracts = append(contracts, contract{
+			Name: operation.name, Description: operation.description,
+			Section: operation.section, Method: operation.method, Mutating: operation.mutating,
+		})
+	}
+	encoded, err := json.Marshal(contracts)
+	require.NoError(t, err)
+	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
+	assert.Equal(t, "0a7df3f8709a1524579af8c448b0298c8f21d4afadfb1705da35f03741044709", actual, "intentional operation catalog changes require updating this snapshot")
+}
+
 func TestToolsExposeTypedOutputContracts(t *testing.T) {
 	session, closeSessions := connectTestClient(t, &fakeCaller{})
 	defer closeSessions()
@@ -365,9 +456,10 @@ func TestPublishedOperationsAreRegisteredWithMatchingSafety(t *testing.T) {
 		tools[tool.Name] = tool
 	}
 
-	for _, spec := range publishedOperations {
+	for _, spec := range operationCatalog {
 		tool, ok := tools[spec.name]
 		require.Truef(t, ok, "%s is not registered", spec.name)
+		assert.Equal(t, spec.description, tool.Description, spec.name)
 		if spec.mutating {
 			assert.False(t, tool.Annotations.ReadOnlyHint, spec.name)
 			require.NotNilf(t, tool.Annotations.DestructiveHint, "%s must declare whether it is destructive", spec.name)
@@ -624,7 +716,8 @@ func TestPublishedOperationsCallExactEndpointsWithFilteredArguments(t *testing.T
 	defer closeSessions()
 	arguments := validOperationArguments()
 
-	for _, spec := range publishedOperations {
+	for _, spec := range operationCatalog {
+		callsBefore := caller.calls
 		params := arguments[spec.name]
 		if params == nil {
 			params = map[string]any{}
@@ -633,6 +726,10 @@ func TestPublishedOperationsCallExactEndpointsWithFilteredArguments(t *testing.T
 		require.NoError(t, err, spec.name)
 		require.NotNil(t, result, spec.name)
 		assert.False(t, result.IsError, "%s: %s", spec.name, callToolText(result))
+		if spec.section == "local" {
+			assert.Equal(t, callsBefore, caller.calls, "%s must remain local", spec.name)
+			continue
+		}
 		assert.Equal(t, spec.section, caller.section, spec.name)
 		assert.Equal(t, spec.method, caller.method, spec.name)
 		if spec.mutating {
@@ -912,6 +1009,8 @@ func validOperationArguments() map[string]map[string]any {
 		return result
 	}
 	return map[string]map[string]any{
+		"beget_get_dns_records":              {"fqdn": "example.com"},
+		"beget_change_dns_records":           withConfirm(map[string]any{"fqdn": "example.com", "records": map[string]any{"A": []map[string]any{{"priority": 0, "value": "192.0.2.1"}}}}),
 		"beget_toggle_ssh":                   withConfirm(map[string]any{"status": 1, "ftplogin": "user_ftp"}),
 		"beget_list_backup_files":            {"backup_id": 1, "path": "/example.com/public_html"},
 		"beget_list_backup_databases":        {"backup_id": 1},
@@ -936,6 +1035,8 @@ func validOperationArguments() map[string]map[string]any {
 		"beget_delete_site":                  withConfirm(map[string]any{"id": 1}),
 		"beget_link_domain_to_site":          withConfirm(map[string]any{"domain_id": 1, "site_id": 2}),
 		"beget_unlink_domain_from_site":      withConfirm(map[string]any{"domain_id": 1}),
+		"beget_freeze_site":                  withConfirm(map[string]any{"id": 1, "excluded_paths": []string{"cache"}}),
+		"beget_unfreeze_site":                withConfirm(map[string]any{"id": 1}),
 		"beget_is_site_frozen":               {"site_id": 1},
 		"beget_add_virtual_domain":           withConfirm(map[string]any{"hostname": "example", "zone_id": 1}),
 		"beget_delete_domain":                withConfirm(map[string]any{"id": 1}),

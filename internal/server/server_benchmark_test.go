@@ -54,6 +54,28 @@ func BenchmarkMCPToolsList(b *testing.B) {
 	b.ReportMetric(float64(len(result.Tools)), "tools")
 }
 
+func BenchmarkMCPCapabilitiesResource(b *testing.B) {
+	session, closeSessions := connectBenchmarkClient(b, newServer(&fakeCaller{}, nil, time.Now))
+	defer closeSessions()
+	params := &mcp.ReadResourceParams{URI: capabilitiesResourceURI}
+	result, err := session.ReadResource(context.Background(), params)
+	if err != nil {
+		b.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := session.ReadResource(context.Background(), params); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(len(encoded)), "response-bytes")
+}
+
 func BenchmarkInputSchemaGeneration(b *testing.B) {
 	b.Run("largest-cron-input", func(b *testing.B) {
 		b.ReportAllocs()

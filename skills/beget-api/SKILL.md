@@ -28,6 +28,8 @@ The server may append a newer-version notice to a tool response after an idle pe
 
 Use the MCP tool schema as the authority for argument names, required fields, enums, and limits. Never guess an argument or add a field from a different tool.
 
+Do not read the capability catalog routinely. If `tools/list` still leaves the correct category unclear, read `beget://capabilities` once as a local routing aid. It makes no Beget request and is never a prerequisite for a tool whose schema already identifies the operation.
+
 Choose the narrowest matching category:
 
 - account and authorization
