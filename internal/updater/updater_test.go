@@ -33,9 +33,11 @@ func TestUpgradeDownloadsVerifiesAndReplacesExecutable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		assert.Equal(t, "Bearer private-test-token", request.Header.Get("Authorization"))
 		switch request.URL.Path {
-		case "/releases/latest":
+		case "/api/releases/latest":
+			assert.Equal(t, "application/vnd.github+json", request.Header.Get("Accept"))
 			_, _ = io.WriteString(response, `{"tag_name":"v0.3.1"}`)
 		case "/download/v0.3.1/" + archiveName:
+			assert.Equal(t, "application/octet-stream", request.Header.Get("Accept"))
 			_, _ = response.Write(archive)
 		case "/download/v0.3.1/checksums.txt":
 			_, _ = fmt.Fprintf(response, "%x  ./%s\n", digest, archiveName)
@@ -53,7 +55,7 @@ func TestUpgradeDownloadsVerifiesAndReplacesExecutable(t *testing.T) {
 		goos:           "linux",
 		goarch:         "amd64",
 		executable:     func() (string, error) { return executable, nil },
-		apiBaseURL:     server.URL,
+		apiBaseURL:     server.URL + "/api",
 		releaseBaseURL: server.URL + "/download",
 		token:          "private-test-token",
 	}

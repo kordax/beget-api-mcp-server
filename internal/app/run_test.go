@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/fx"
 )
@@ -29,7 +30,7 @@ func TestRunValidatesUpgradeCommand(t *testing.T) {
 	assert.Contains(t, output.String(), "at most one version")
 
 	output.Reset()
-	assert.Equal(t, 0, Run([]string{"upgrade", "v0.3.0"}, &output))
+	assert.Equal(t, 0, Run([]string{"upgrade", "v" + buildinfo.Version}, &output))
 	assert.Empty(t, output.String())
 }
 

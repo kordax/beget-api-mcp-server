@@ -136,7 +136,11 @@ func (updater *Updater) download(ctx context.Context, target string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("Accept", "application/octet-stream")
+	accept := "application/octet-stream"
+	if strings.HasPrefix(target, updater.apiBaseURL+"/") {
+		accept = "application/vnd.github+json"
+	}
+	request.Header.Set("Accept", accept)
 	request.Header.Set("User-Agent", "beget-api-mcp-server/"+updater.currentVersion)
 	if updater.token != "" {
 		request.Header.Set("Authorization", "Bearer "+updater.token)
