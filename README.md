@@ -29,6 +29,8 @@ The server exposes 66 typed tools in total. Each tool has a fixed Beget endpoint
 
 Each input schema contains only the parameters accepted by its Beget method. Required fields, identifiers, enums, ranges, paths, Cron expressions, and incompatible values are checked before an HTTP request. Password fields for managed FTP, MySQL, and mail resources are marked write-only and are never part of result summaries.
 
+Mailbox passwords contain 6 to 64 characters and use only English letters, digits, and ``.,/<>?;:"'`!@#$%^&*()[]{}_+-=|~``. At least one letter, one digit, and one symbol are required. The server checks this policy locally and returns safe guidance for Beget error 1208 without repeating the password.
+
 Every MCP client receives a short safe-operation workflow during initialization: check authorization when unknown, read current state and real identifiers before a mutation, obtain explicit approval, make one confirmed change, and verify it. The installed Codex skill adds more guidance for tool selection and error handling without duplicating the schemas.
 
 DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
@@ -82,7 +84,7 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 90.9% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 91.1% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 Run `task benchmark` to measure server startup, MCP initialization, `tools/list`, schema generation, tool calls, and local fake-server HTTP round trips. The command reports time, bytes, and allocations without contacting Beget. See the [performance baseline](docs/performance.md) for the current reference run.
 

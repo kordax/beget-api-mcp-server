@@ -67,4 +67,6 @@ The Beget API key is only a server credential. Never request, echo, log, persist
 
 Some explicit account operations accept a password for an FTP account, MySQL access, or mailbox. Use such a value only for the exact password operation requested by the user. Never confuse it with the Beget API key, reuse it elsewhere, or repeat it in summaries and error reports.
 
+Mailbox passwords must contain 6 to 64 characters using only English letters, digits, and ``.,/<>?;:"'`!@#$%^&*()[]{}_+-=|~``. Require at least one letter, one digit, and one symbol. Treat local policy violations and Beget error 1208 as validation failures; report only the missing requirement and never the submitted password.
+
 Do not broaden the requested operation. Return Beget errors without exposing secret values.
