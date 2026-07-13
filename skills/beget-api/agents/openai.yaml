@@ -1,0 +1,4 @@
+interface:
+  display_name: "Beget API"
+  short_description: "Safely operate Beget hosting through MCP"
+  default_prompt: "Use $beget-api to inspect my Beget hosting account safely."

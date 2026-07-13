@@ -68,7 +68,7 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 94.5% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 94.9% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 Run `task mcp-inspector` to start the pinned official MCP Inspector for interactive protocol and tool testing. This command requires Node.js and npm with `npx`.
 
@@ -111,6 +111,8 @@ command = "beget-api-mcp-server"
 ```
 
 Stdio is the default transport, so no transport argument is required.
+
+The MCP server starts even when credentials are not configured. Agents can call `beget_auth_status` to detect that state and receive safe setup guidance. Actual Beget tools validate authorization only when called. The installer also provides a `beget-api` Codex skill that teaches this workflow and keeps API keys out of MCP arguments.
 
 `BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, headless Linux sessions without Secret Service, and external password-manager launchers.
 

@@ -38,6 +38,7 @@ jobs:
               -o "dist/${name}/${binary}" \
               ./cmd/beget-api-mcp-server
             cp LICENSE README.md README.ru.md "dist/${name}/"
+            cp -R skills "dist/${name}/"
             if [ "$goos" = "windows" ]; then
               (cd dist && zip -qr "${name}.zip" "${name}")
             else

@@ -85,6 +85,17 @@ add_to_path() {
   printf 'Added %s to PATH in %s. Restart the terminal before first use.\n' "$install_dir" "$shell_rc"
 }
 
+install_codex_skill() {
+  skill_source="$temporary/${binary}_${version}_${os}_${arch}/skills/beget-api"
+  [ -d "$skill_source" ] || return
+
+  codex_home="${CODEX_HOME:-$HOME/.codex}"
+  skill_target="$codex_home/skills/beget-api"
+  mkdir -p "$skill_target"
+  cp -R "$skill_source/." "$skill_target/"
+  printf 'Installed Codex skill to %s\n' "$skill_target"
+}
+
 main() {
   need curl
   need tar
@@ -109,6 +120,7 @@ main() {
 
   mkdir -p "$install_dir"
   install -m 0755 "$source_binary" "$install_dir/$binary"
+  install_codex_skill
   add_to_path
 
   printf 'Installed %s %s to %s\n' "$binary" "$version" "$install_dir/$binary"

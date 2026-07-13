@@ -52,6 +52,15 @@ try {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
     Copy-Item $Source (Join-Path $InstallDir "${Binary}.exe") -Force
 
+    $SkillSource = Join-Path $Temporary "${Binary}_${Version}_windows_${Architecture}\skills\beget-api"
+    if (Test-Path $SkillSource) {
+        $CodexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+        $SkillTarget = Join-Path $CodexHome "skills\beget-api"
+        New-Item -ItemType Directory -Force -Path $SkillTarget | Out-Null
+        Copy-Item (Join-Path $SkillSource "*") $SkillTarget -Recurse -Force
+        Write-Host "Installed Codex skill to $SkillTarget"
+    }
+
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $PathEntries = @($UserPath -split ";" | Where-Object { $_ })
     if ($InstallDir -notin $PathEntries) {

@@ -34,6 +34,8 @@ command -v beget-api-mcp-server
 
 Set `BEGET_MCP_VERSION` to install a specific version or `BEGET_MCP_INSTALL_DIR` to choose another directory. Prebuilt archives and checksums remain available on the release page for manual installation.
 
+The release also installs the `beget-api` skill into Codex. Other MCP clients receive the same authorization guidance through the `beget_auth_status` tool.
+
 ## Save Beget credentials
 
 Enable Hosting API access in the Beget control panel and create a dedicated API password. Save the login and password in the operating system keyring:
@@ -52,6 +54,8 @@ beget-api-mcp-server credentials delete
 ```
 
 Linux desktop sessions normally provide Secret Service automatically. For a headless server without a Secret Service daemon, use the environment fallback described below.
+
+Credentials are optional during MCP startup. Without them, the server still connects to the client and exposes `beget_auth_status`; an actual Beget operation returns a concise authorization error until credentials are supplied and the server is reconnected.
 
 ## Universal MCP contract
 
