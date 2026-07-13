@@ -34,7 +34,7 @@ command -v beget-api-mcp-server
 
 Set `BEGET_MCP_VERSION` to install a specific version or `BEGET_MCP_INSTALL_DIR` to choose another directory. Prebuilt archives and checksums remain available on the release page for manual installation.
 
-The release also installs the `beget-api` skill into Codex. Other MCP clients receive the same authorization guidance through the `beget_auth_status` tool.
+The release also installs the `beget-api` skill into Codex. Every MCP client receives the critical authorization and mutation workflow during MCP initialization and can call `beget_auth_status` for current setup guidance.
 
 ## Save Beget credentials
 

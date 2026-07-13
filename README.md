@@ -25,7 +25,11 @@ Tools that change hosting state:
 
 - All documented mutations in those sections, including `beget_change_mailbox_password`, mailbox creation and forwarding, FTP and MySQL password changes, site and domain management, backup restores, and Cron changes.
 
-The server exposes 66 typed tools in total. Each tool has a fixed Beget endpoint and typed documented parameters: it is not a universal API proxy. Every state-changing tool is marked destructive and requires `confirm: true`.
+The server exposes 66 typed tools in total. Each tool has a fixed Beget endpoint and typed documented parameters: it is not a universal API proxy. Every state-changing tool declares accurate destructive and idempotent hints and requires `confirm: true`.
+
+Each input schema contains only the parameters accepted by its Beget method. Required fields, identifiers, enums, ranges, paths, Cron expressions, and incompatible values are checked before an HTTP request. Password fields for managed FTP, MySQL, and mail resources are marked write-only and are never part of result summaries.
+
+Every MCP client receives a short safe-operation workflow during initialization: check authorization when unknown, read current state and real identifiers before a mutation, obtain explicit approval, make one confirmed change, and verify it. The installed Codex skill adds more guidance for tool selection and error handling without duplicating the schemas.
 
 DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`.
 
@@ -132,7 +136,7 @@ command = "beget-api-mcp-server"
 
 Stdio is the default transport, so no transport argument is required.
 
-Every server process reads the same persistent file, so credentials survive restarts and independent MCP processes. Existing Secret Service, Keychain, or Credential Manager entries created by earlier releases are migrated automatically on first use. The MCP server also starts when credentials are not configured: agents can call `beget_auth_status` to receive safe setup guidance, and the server retries the persistent store while credentials are missing. After a successful load, credentials stay cached in process memory until shutdown. The installer also provides a `beget-api` Codex skill that teaches this workflow and keeps API keys out of MCP arguments.
+Every server process reads the same persistent file, so credentials survive restarts and independent MCP processes. Existing Secret Service, Keychain, or Credential Manager entries created by earlier releases are migrated automatically on first use. The MCP server also starts when credentials are not configured: agents can call `beget_auth_status` to receive safe setup guidance, and the server retries the persistent store while credentials are missing. After a successful load, credentials stay cached in process memory until shutdown. Universal safety instructions are sent through MCP initialization. The installer also provides a `beget-api` Codex skill with additional tool-selection and error-handling guidance.
 
 `BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, and external password-manager launchers.
 
