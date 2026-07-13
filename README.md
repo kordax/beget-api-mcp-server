@@ -60,6 +60,22 @@ HTTP transports listen on `127.0.0.1:8080` by default and cannot bind to a non-l
 
 See [the transport guide](docs/transports.md) for every flag and client configuration example.
 
+## Command-line help
+
+Run the binary with `help`, `-h`, or `--help` to see its commands and transport options:
+
+```bash
+beget-api-mcp-server help
+```
+
+Command-specific help is available without starting the MCP server or accessing the system keyring:
+
+```bash
+beget-api-mcp-server help credentials
+beget-api-mcp-server help credentials set
+beget-api-mcp-server help upgrade
+```
+
 ## Build and test
 
 ```bash

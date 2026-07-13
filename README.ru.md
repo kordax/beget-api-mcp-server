@@ -56,6 +56,22 @@ HTTP-транспорты по умолчанию слушают `127.0.0.1:8080
 
 Все флаги и примеры настройки клиентов собраны в [инструкции по транспортам](docs/transports.ru.md).
 
+## Справка командной строки
+
+Запустите бинарник с `help`, `-h` или `--help`, чтобы увидеть команды и параметры транспортов:
+
+```bash
+beget-api-mcp-server help
+```
+
+Справка по отдельным командам доступна без запуска MCP-сервера и обращения к системному хранилищу:
+
+```bash
+beget-api-mcp-server help credentials
+beget-api-mcp-server help credentials set
+beget-api-mcp-server help upgrade
+```
+
 ## Сборка
 
 ```bash

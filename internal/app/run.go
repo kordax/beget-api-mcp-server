@@ -14,7 +14,11 @@ import (
 	"go.uber.org/fx"
 )
 
-func Run(arguments []string, errorOutput io.Writer) int {
+func Run(arguments []string, output, errorOutput io.Writer) int {
+	if handled, exitCode := writeRequestedHelp(arguments, output, errorOutput); handled {
+		return exitCode
+	}
+
 	if credentials.IsCommand(arguments) {
 		var command *credentials.Command
 		application := fx.New(

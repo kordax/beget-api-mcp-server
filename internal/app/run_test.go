@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
@@ -14,23 +15,62 @@ import (
 	"go.uber.org/fx"
 )
 
+func TestRunShowsHelp(t *testing.T) {
+	tests := []struct {
+		name      string
+		arguments []string
+		contains  []string
+	}{
+		{name: "help command", arguments: []string{"help"}, contains: []string{"Usage:", "Transport options:", "credentials"}},
+		{name: "long flag", arguments: []string{"--help"}, contains: []string{"Usage:", "--streamable-http"}},
+		{name: "short flag after transport option", arguments: []string{"--stdio", "-h"}, contains: []string{"Usage:", "--stdio"}},
+		{name: "credentials", arguments: []string{"help", "credentials"}, contains: []string{"credentials set", "credentials check", "credentials delete"}},
+		{name: "credentials alias", arguments: []string{"credentials", "--help"}, contains: []string{"system keyring", "credentials set"}},
+		{name: "credentials set", arguments: []string{"credentials", "set", "--help"}, contains: []string{"--login <login>", "never accepted"}},
+		{name: "upgrade", arguments: []string{"upgrade", "help"}, contains: []string{"upgrade --check", "latest release"}},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			var errorOutput bytes.Buffer
+
+			assert.Equal(t, 0, Run(test.arguments, &output, &errorOutput))
+			assert.Empty(t, errorOutput.String())
+			for _, expected := range test.contains {
+				assert.Contains(t, output.String(), expected)
+			}
+		})
+	}
+}
+
+func TestRunRejectsUnknownHelpTopic(t *testing.T) {
+	var output bytes.Buffer
+	var errorOutput bytes.Buffer
+
+	assert.Equal(t, 2, Run([]string{"help", "missing"}, &output, &errorOutput))
+	assert.Empty(t, output.String())
+	assert.Contains(t, errorOutput.String(), `unknown help topic "missing"`)
+	assert.Contains(t, errorOutput.String(), "beget-api-mcp-server help")
+}
+
 func TestRunValidatesCredentialCommands(t *testing.T) {
 	var output bytes.Buffer
-	assert.Equal(t, 1, Run([]string{"credentials"}, &output))
+	assert.Equal(t, 1, Run([]string{"credentials"}, io.Discard, &output))
 	assert.Contains(t, output.String(), "requires set, check, or delete")
 
 	output.Reset()
-	assert.Equal(t, 1, Run([]string{"credentials", "unknown"}, &output))
+	assert.Equal(t, 1, Run([]string{"credentials", "unknown"}, io.Discard, &output))
 	assert.Contains(t, output.String(), "unknown credentials command")
 }
 
 func TestRunValidatesUpgradeCommand(t *testing.T) {
 	var output bytes.Buffer
-	assert.Equal(t, 1, Run([]string{"upgrade", "one", "two"}, &output))
+	assert.Equal(t, 1, Run([]string{"upgrade", "one", "two"}, io.Discard, &output))
 	assert.Contains(t, output.String(), "at most one version")
 
 	output.Reset()
-	assert.Equal(t, 0, Run([]string{"upgrade", "v" + buildinfo.Version}, &output))
+	assert.Equal(t, 0, Run([]string{"upgrade", "v" + buildinfo.Version}, io.Discard, &output))
 	assert.Empty(t, output.String())
 }
 
