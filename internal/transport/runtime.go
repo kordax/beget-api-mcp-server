@@ -5,10 +5,12 @@ package transport
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -59,6 +61,9 @@ func (r *Runtime) Prepare() error {
 	}
 
 	protection := http.NewCrossOriginProtection()
+	if r.options.HTTPBearerToken != "" {
+		handler = requireBearerToken(r.options.HTTPBearerToken, handler)
+	}
 	mux := http.NewServeMux()
 	mux.Handle(r.options.HTTPPath, protection.Handler(handler))
 	r.httpServer = &http.Server{
@@ -98,4 +103,17 @@ func (r *Runtime) Endpoint() string {
 
 func (r *Runtime) Mode() Mode {
 	return r.options.Mode
+}
+
+func requireBearerToken(token string, next http.Handler) http.Handler {
+	expected := []byte("Bearer " + token)
+	return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		provided := []byte(strings.TrimSpace(request.Header.Get("Authorization")))
+		if subtle.ConstantTimeCompare(provided, expected) != 1 {
+			response.Header().Set("WWW-Authenticate", "Bearer")
+			http.Error(response, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(response, request)
+	})
 }

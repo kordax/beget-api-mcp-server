@@ -32,6 +32,7 @@ type Options struct {
 	Mode                Mode
 	HTTPAddress         string
 	HTTPPath            string
+	HTTPBearerToken     string
 	SessionTimeout      time.Duration
 	JSONResponse        bool
 	StreamableStateless bool
@@ -58,6 +59,7 @@ func ParseOptions(arguments Arguments) (Options, error) {
 	sse := flags.Bool("sse", false, "use the legacy SSE MCP transport")
 	httpAddress := flags.String("http-address", "127.0.0.1:8080", "loopback address for HTTP transports")
 	httpPath := flags.String("http-path", "", "HTTP endpoint path; defaults to /mcp or /sse")
+	httpAuth := flags.Bool("http-auth", false, "require a bearer token from BEGET_MCP_HTTP_TOKEN")
 	sessionTimeout := flags.Duration("streamable-session-timeout", 30*time.Minute, "idle Streamable HTTP session timeout")
 	jsonResponse := flags.Bool("streamable-json-response", false, "return JSON instead of SSE for Streamable HTTP responses")
 	stateless := flags.Bool("streamable-stateless", false, "disable Streamable HTTP session state")
@@ -94,6 +96,19 @@ func ParseOptions(arguments Arguments) (Options, error) {
 	if *sessionTimeout < 0 {
 		return Options{}, errors.New("session timeout cannot be negative")
 	}
+	if mode == ModeStdio && *httpAuth {
+		return Options{}, errors.New("HTTP authentication requires --streamable-http or --sse")
+	}
+	httpBearerToken := ""
+	if *httpAuth {
+		httpBearerToken = os.Getenv("BEGET_MCP_HTTP_TOKEN")
+		if httpBearerToken == "" {
+			return Options{}, errors.New("BEGET_MCP_HTTP_TOKEN is required when --http-auth is enabled")
+		}
+		if len(httpBearerToken) < 32 {
+			return Options{}, errors.New("BEGET_MCP_HTTP_TOKEN must contain at least 32 characters")
+		}
+	}
 
 	endpointPath := *httpPath
 	if endpointPath == "" {
@@ -116,6 +131,7 @@ func ParseOptions(arguments Arguments) (Options, error) {
 		Mode:                mode,
 		HTTPAddress:         *httpAddress,
 		HTTPPath:            endpointPath,
+		HTTPBearerToken:     httpBearerToken,
 		SessionTimeout:      *sessionTimeout,
 		JSONResponse:        *jsonResponse,
 		StreamableStateless: *stateless,

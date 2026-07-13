@@ -20,11 +20,7 @@ Stdio является вариантом по умолчанию и проще 
   "mcpServers": {
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"],
-      "env": {
-        "BEGET_API_LOGIN": "your-beget-login",
-        "BEGET_API_KEY": "your-api-password"
-      }
+      "args": ["--stdio"]
     }
   }
 }
@@ -37,8 +33,6 @@ Stdio является вариантом по умолчанию и проще 
 Streamable HTTP является основным HTTP-транспортом для актуальных MCP-клиентов. Сервер нужно запустить отдельно:
 
 ```bash
-BEGET_API_LOGIN=your-beget-login \
-BEGET_API_KEY=your-api-password \
 beget-api-mcp-server \
   --streamable-http \
   --http-address 127.0.0.1:8080 \
@@ -70,8 +64,6 @@ beget-api-mcp-server \
 Отдельный SSE-транспорт нужен клиентам, которые все еще используют транспорт MCP 2024 года. Для новых подключений лучше выбирать Streamable HTTP.
 
 ```bash
-BEGET_API_LOGIN=your-beget-login \
-BEGET_API_KEY=your-api-password \
 beget-api-mcp-server \
   --sse \
   --http-address 127.0.0.1:8080 \
@@ -94,8 +86,35 @@ beget-api-mcp-server \
 
 - `--http-address` по умолчанию равен `127.0.0.1:8080` и задает TCP-адрес Streamable HTTP или SSE.
 - `--http-path` по умолчанию равен `/mcp` или `/sse` и задает путь endpoint для выбранного HTTP-транспорта.
+- `--http-auth` требует `Authorization: Bearer ...` в каждом запросе. Токен читается из `BEGET_MCP_HTTP_TOKEN` и должен содержать не меньше 32 символов.
 
 Адрес должен использовать `localhost`, `127.0.0.1` или `::1`. Сервер отклонит wildcard или внешний адрес до запуска HTTP.
+
+## Bearer-авторизация HTTP
+
+Встроенная авторизация включается без передачи токена в аргументах процесса:
+
+```bash
+export BEGET_MCP_HTTP_TOKEN="replace-with-at-least-32-random-characters"
+beget-api-mcp-server --streamable-http --http-auth
+```
+
+Клиент должен отправлять такой же заголовок. Распространенный формат настройки:
+
+```json
+{
+  "mcpServers": {
+    "beget": {
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer replace-with-at-least-32-random-characters"
+      }
+    }
+  }
+}
+```
+
+Если клиент поддерживает защищенные секреты, токен лучше хранить там. Сервер сравнивает токены без раннего выхода и никогда не добавляет настроенный токен в ошибки или логи.
 
 ## JetBrains и GoLand
 
@@ -103,6 +122,6 @@ GoLand поддерживает stdio, Streamable HTTP и старый SSE. Дл
 
 ## Граница безопасности
 
-Инструменты MCP могут изменять DNS и состояние сайтов. Поэтому встроенный HTTP-сервер работает только на loopback. Защита от cross-origin запросов и DNS rebinding остается включенной.
+Инструменты MCP могут изменять DNS и состояние сайтов. Поэтому встроенный HTTP-сервер работает только на loopback. Защита от cross-origin запросов и DNS rebinding остается включенной, а bearer-авторизацию можно независимо включить для Streamable HTTP или SSE.
 
-Для доступа с другой машины сервер нужно оставить на loopback и поставить перед ним reverse proxy с авторизацией, VPN или SSH tunnel. Напрямую открывать endpoint в сеть не следует, пока в проекте не появится собственный слой HTTP-аутентификации.
+Для доступа с другой машины сервер нужно оставить на loopback и использовать reverse proxy с авторизацией, VPN или SSH tunnel. Встроенный bearer является дополнительным слоем и не заменяет шифрование транспорта или loopback-ограничение.

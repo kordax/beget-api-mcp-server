@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -22,6 +23,48 @@ func TestStreamableHTTPRuntime(t *testing.T) {
 
 func TestLegacySSERuntime(t *testing.T) {
 	testHTTPRuntime(t, ModeSSE)
+}
+
+func TestStreamableHTTPRuntimeWithBearerAuthentication(t *testing.T) {
+	token := "test-only-token-with-at-least-32-characters"
+	server := mcp.NewServer(&mcp.Implementation{Name: "transport-auth-test", Version: "test"}, nil)
+	runtime := NewRuntime(server, Options{
+		Mode:            ModeStreamableHTTP,
+		HTTPAddress:     "127.0.0.1:0",
+		HTTPPath:        "/mcp",
+		HTTPBearerToken: token,
+		SessionTimeout:  time.Minute,
+	})
+	require.NoError(t, runtime.Prepare())
+
+	runDone := make(chan error, 1)
+	go func() { runDone <- runtime.Run(context.Background()) }()
+
+	response, err := http.Get(runtime.Endpoint())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, response.StatusCode)
+	require.NoError(t, response.Body.Close())
+
+	httpTransport := &http.Transport{DisableKeepAlives: true}
+	t.Cleanup(httpTransport.CloseIdleConnections)
+	client := mcp.NewClient(&mcp.Implementation{Name: "transport-auth-client", Version: "test"}, nil)
+	session, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint: runtime.Endpoint(),
+		HTTPClient: &http.Client{Transport: bearerRoundTripper{
+			base:  httpTransport,
+			token: token,
+		}},
+		DisableStandaloneSSE: true,
+	}, nil)
+	require.NoError(t, err)
+	_, err = session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	require.NoError(t, session.Close())
+
+	shutdownContext, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	require.NoError(t, runtime.Shutdown(shutdownContext))
+	require.NoError(t, <-runDone)
 }
 
 func TestRuntimeGuardsAndAccessors(t *testing.T) {
@@ -60,6 +103,35 @@ func TestRuntimePropagatesServeError(t *testing.T) {
 	assert.ErrorIs(t, runtime.Run(context.Background()), expected)
 }
 
+func TestRequireBearerToken(t *testing.T) {
+	token := "test-only-token-with-at-least-32-characters"
+	handler := requireBearerToken(token, http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	}))
+
+	for name, testCase := range map[string]struct {
+		authorization  string
+		expectedStatus int
+	}{
+		"missing": {expectedStatus: http.StatusUnauthorized},
+		"invalid": {authorization: "Bearer wrong", expectedStatus: http.StatusUnauthorized},
+		"valid":   {authorization: "Bearer " + token, expectedStatus: http.StatusNoContent},
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			request.Header.Set("Authorization", testCase.authorization)
+			response := httptest.NewRecorder()
+
+			handler.ServeHTTP(response, request)
+			assert.Equal(t, testCase.expectedStatus, response.Code)
+			assert.NotContains(t, response.Body.String(), token)
+			if testCase.expectedStatus == http.StatusUnauthorized {
+				assert.Equal(t, "Bearer", response.Header().Get("WWW-Authenticate"))
+			}
+		})
+	}
+}
+
 type failingListener struct {
 	err error
 }
@@ -72,6 +144,17 @@ type testAddress string
 
 func (address testAddress) Network() string { return string(address) }
 func (address testAddress) String() string  { return string(address) }
+
+type bearerRoundTripper struct {
+	base  http.RoundTripper
+	token string
+}
+
+func (transport bearerRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	request = request.Clone(request.Context())
+	request.Header.Set("Authorization", "Bearer "+transport.token)
+	return transport.base.RoundTrip(request)
+}
 
 func testHTTPRuntime(t *testing.T, mode Mode) {
 	t.Helper()

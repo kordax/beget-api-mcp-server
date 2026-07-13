@@ -4,10 +4,11 @@
 package main
 
 import (
+	"os"
+
 	"github.com/kordax/beget-api-mcp-server/internal/app"
-	"go.uber.org/fx"
 )
 
 func main() {
-	fx.New(app.Module).Run()
+	os.Exit(app.Run(os.Args[1:], os.Stderr))
 }

@@ -119,3 +119,30 @@ func TestParseOptionsAcceptsLocalhostAndCustomPath(t *testing.T) {
 	assert.Equal(t, ModeSSE, options.Mode)
 	assert.Equal(t, "/events", options.HTTPPath)
 }
+
+func TestParseOptionsHTTPAuthentication(t *testing.T) {
+	t.Run("requires HTTP transport", func(t *testing.T) {
+		_, err := ParseOptions(Arguments{"--http-auth"})
+		assert.ErrorContains(t, err, "requires --streamable-http or --sse")
+	})
+
+	t.Run("requires token", func(t *testing.T) {
+		t.Setenv("BEGET_MCP_HTTP_TOKEN", "")
+		_, err := ParseOptions(Arguments{"--sse", "--http-auth"})
+		assert.ErrorContains(t, err, "BEGET_MCP_HTTP_TOKEN is required")
+	})
+
+	t.Run("rejects weak token", func(t *testing.T) {
+		t.Setenv("BEGET_MCP_HTTP_TOKEN", "too-short")
+		_, err := ParseOptions(Arguments{"--sse", "--http-auth"})
+		assert.ErrorContains(t, err, "at least 32 characters")
+	})
+
+	t.Run("accepts token from environment", func(t *testing.T) {
+		token := "test-only-token-with-at-least-32-characters"
+		t.Setenv("BEGET_MCP_HTTP_TOKEN", token)
+		options, err := ParseOptions(Arguments{"--streamable-http", "--http-auth"})
+		require.NoError(t, err)
+		assert.Equal(t, token, options.HTTPBearerToken)
+	})
+}

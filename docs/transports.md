@@ -20,11 +20,7 @@ Stdio is the default and the simplest choice for a local MCP client. The client 
   "mcpServers": {
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"],
-      "env": {
-        "BEGET_API_LOGIN": "your-beget-login",
-        "BEGET_API_KEY": "your-api-password"
-      }
+      "args": ["--stdio"]
     }
   }
 }
@@ -37,8 +33,6 @@ The `--stdio` argument may be omitted because it is the default.
 Streamable HTTP is the recommended HTTP transport for current MCP clients. Start the server separately:
 
 ```bash
-BEGET_API_LOGIN=your-beget-login \
-BEGET_API_KEY=your-api-password \
 beget-api-mcp-server \
   --streamable-http \
   --http-address 127.0.0.1:8080 \
@@ -70,8 +64,6 @@ The three flags above are valid only together with `--streamable-http`.
 The separate SSE transport exists for clients that still implement the 2024 MCP transport. New integrations should use Streamable HTTP.
 
 ```bash
-BEGET_API_LOGIN=your-beget-login \
-BEGET_API_KEY=your-api-password \
 beget-api-mcp-server \
   --sse \
   --http-address 127.0.0.1:8080 \
@@ -94,8 +86,35 @@ Clients with legacy SSE support connect to:
 
 - `--http-address` defaults to `127.0.0.1:8080` and controls the TCP address used by Streamable HTTP or SSE.
 - `--http-path` defaults to `/mcp` or `/sse` and controls the endpoint path for the selected HTTP transport.
+- `--http-auth` requires `Authorization: Bearer ...` on every request. The token is read from `BEGET_MCP_HTTP_TOKEN` and must contain at least 32 characters.
 
 The address must use `localhost`, `127.0.0.1`, or `::1`. A wildcard or external address is rejected before the HTTP server starts.
+
+## HTTP bearer authentication
+
+Enable built-in authentication without placing the token in process arguments:
+
+```bash
+export BEGET_MCP_HTTP_TOKEN="replace-with-at-least-32-random-characters"
+beget-api-mcp-server --streamable-http --http-auth
+```
+
+The client must send the matching header. Clients commonly represent it like this:
+
+```json
+{
+  "mcpServers": {
+    "beget": {
+      "url": "http://127.0.0.1:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer replace-with-at-least-32-random-characters"
+      }
+    }
+  }
+}
+```
+
+Use the client's protected-secret feature when it supports one. The server compares tokens without early-exit string comparison and never includes the configured token in errors or logs.
 
 ## JetBrains and GoLand
 
@@ -103,6 +122,6 @@ GoLand supports stdio, Streamable HTTP, and legacy SSE. For stdio, use the JSON 
 
 ## Security boundary
 
-The MCP tools can change DNS and site state. The built-in HTTP listener is therefore loopback-only. Cross-origin and DNS-rebinding protections remain enabled.
+The MCP tools can change DNS and site state. The built-in HTTP listener is therefore loopback-only. Cross-origin and DNS-rebinding protections remain enabled, and bearer authentication can be enabled independently for Streamable HTTP or SSE.
 
-To access the server from another machine, keep it on loopback and place an authenticated reverse proxy, VPN, or SSH tunnel in front of it. Do not expose the endpoint directly until the project has its own HTTP authentication layer.
+To access the server from another machine, keep it on loopback and use an authenticated reverse proxy, VPN, or SSH tunnel. Built-in bearer authentication is an additional layer and does not replace transport encryption or the loopback restriction.
