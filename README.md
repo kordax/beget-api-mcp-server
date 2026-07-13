@@ -37,7 +37,7 @@ DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAM
 
 ## Architecture
 
-The entry point only starts `app.Module`. Configuration, the HTTP client, the Beget adapter, the MCP server, and process lifecycle are separate Fx modules. This keeps wiring visible and lets `fx.ValidateApp` check the dependency graph in tests.
+The entry point delegates to `app.Run`, which selects either the MCP server or the credentials command. Both paths resolve their dependencies through Uber Fx. Configuration, the system keyring, HTTP client, Beget adapter, MCP server, and process lifecycle remain separate modules.
 
 The project uses:
 
@@ -45,6 +45,7 @@ The project uses:
 - Uber Fx 1.24.0
 - Testify 1.11.1
 - `github.com/kordax/basic-utils/v3` 3.4.0
+- `github.com/zalando/go-keyring` 0.2.8
 - the official MCP Go SDK
 
 ## Transports
@@ -55,7 +56,7 @@ The server supports three mutually exclusive transports:
 - Streamable HTTP is selected with `--streamable-http`
 - legacy SSE is selected with `--sse`
 
-HTTP transports listen on `127.0.0.1:8080` by default and cannot bind to a non-loopback address. The endpoint, address, Streamable HTTP session mode, and response mode have separate flags.
+HTTP transports listen on `127.0.0.1:8080` by default and cannot bind to a non-loopback address. The endpoint, session behavior, response mode, and optional bearer authentication have separate flags.
 
 See [the transport guide](docs/transports.md) for every flag and client configuration example.
 
@@ -67,13 +68,13 @@ go vet ./...
 go test -race ./...
 ```
 
-The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 97.6% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
+The repository also provides `task verify` for the complete test, coverage, lint, vulnerability, static security, and secret-scanning suite. Run `task tools` once to install its pinned tool versions. The coverage gate requires at least 90%; the current suite covers 94.2% and publishes a badge from the `badges` branch. GitHub Actions runs the same categories of checks and Dependabot monitors Go modules and workflow actions.
 
 Run `task mcp-inspector` to start the pinned official MCP Inspector for interactive protocol and tool testing. This command requires Node.js and npm with `npx`.
 
 ## Install on the system
 
-For a permanent user-wide installation and MCP client configuration, follow [the installation guide](docs/installation.md).
+Download a prebuilt Linux, macOS, or Windows archive from [GitHub Releases](https://github.com/kordax/beget-api-mcp-server/releases), or install from source. The complete MCP client setup is in [the installation guide](docs/installation.md).
 
 The short version is:
 
@@ -86,32 +87,33 @@ The full guide covers MCP client configuration, safe credential handling, updati
 
 ## Credentials
 
-Enable API access in the Beget control panel and create a dedicated API password. The process expects two environment variables:
-
-- `BEGET_API_LOGIN` contains the hosting account login
-- `BEGET_API_KEY` contains the dedicated API password
-
-The server itself only needs these variables and does not depend on a particular MCP client or secret manager:
+Enable API access in the Beget control panel and create a dedicated API password. Save it once in the operating system keyring:
 
 ```bash
-BEGET_API_LOGIN=your-login BEGET_API_KEY=your-api-password /absolute/path/to/bin/beget-api-mcp-server
+beget-api-mcp-server credentials set --login your-login
 ```
 
-Codex configuration is shown here only as an example:
+The command reads the API key from a hidden terminal prompt. A pipe may be used in non-interactive automation. The key is stored by Secret Service on Linux, Keychain on macOS, or Credential Manager on Windows. Verify or remove it without displaying either value:
+
+```bash
+beget-api-mcp-server credentials check
+beget-api-mcp-server credentials delete
+```
+
+MCP clients then need only the executable command:
 
 ```toml
 [mcp_servers.beget]
 command = "/absolute/path/to/bin/beget-api-mcp-server"
-env = { BEGET_API_LOGIN = "your-login", BEGET_API_KEY = "your-api-password" }
 ```
 
-This direct configuration is universal, but it stores the key in the MCP client configuration. If the client supports protected secrets, use that feature. An external password-manager launcher is another option.
+`BEGET_API_LOGIN` and `BEGET_API_KEY` remain supported and take precedence over stored values. They are useful in containers, CI, headless Linux sessions without Secret Service, and external password-manager launchers.
 
 The API password is sent to Beget in an HTTPS POST form body. It is not placed in URLs, logs, tool arguments, or tool results. Tests use fake credentials and local HTTP servers, so they never contact a real Beget account.
 
 ## API scope
 
-This version targets the classic Beget Hosting API at `https://api.beget.com/api`. Beget Cloud uses a different JWT API. I plan to keep that integration in a separate adapter so that credentials and tool contracts do not get mixed together.
+This project intentionally targets the classic Beget Hosting API at `https://api.beget.com/api`. Expanding or changing that upstream API is outside this repository's scope; the server stays a small typed adapter around the supported operations.
 
 Official references:
 

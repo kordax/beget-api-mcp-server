@@ -15,7 +15,7 @@ import (
 	"go.uber.org/fx"
 )
 
-const version = "0.2.0"
+var version = "0.2.1"
 
 type NoArgs struct{}
 

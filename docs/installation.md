@@ -4,9 +4,9 @@ This guide installs the server once for the current user and connects it to an M
 
 ## Requirements
 
-Install Go 1.26.5 first.
+Prebuilt release archives do not require Go. Choose the archive for Linux, macOS, or Windows and the `amd64` or `arm64` architecture from [GitHub Releases](https://github.com/kordax/beget-api-mcp-server/releases). Every release includes `checksums.txt` for SHA-256 verification.
 
-Check the versions:
+Installing from source requires Go 1.26.5:
 
 ```bash
 go version
@@ -14,7 +14,9 @@ go version
 
 ## First installation
 
-Install the binary into the current user's executable directory:
+Extract the release archive and move `beget-api-mcp-server` or `beget-api-mcp-server.exe` to a directory listed in `PATH`.
+
+Alternatively, install the current tagged version with Go:
 
 ```bash
 mkdir -p "$HOME/.local/bin"
@@ -27,33 +29,43 @@ Verify the file without starting the MCP server:
 test -x "$HOME/.local/bin/beget-api-mcp-server"
 ```
 
-The binary can live outside `PATH` because MCP configurations can use its absolute path.
+The binary can also live outside `PATH` because MCP configurations accept its absolute path.
+
+## Save Beget credentials
+
+Enable Hosting API access in the Beget control panel and create a dedicated API password. Save the login and password in the operating system keyring:
+
+```bash
+beget-api-mcp-server credentials set --login your-beget-login
+```
+
+The API key is read from a hidden prompt and is never accepted as a command-line argument. The command uses Secret Service on Linux, Keychain on macOS, and Credential Manager on Windows.
+
+Verify or remove the stored credentials without displaying them:
+
+```bash
+beget-api-mcp-server credentials check
+beget-api-mcp-server credentials delete
+```
+
+Linux desktop sessions normally provide Secret Service automatically. For a headless server without a Secret Service daemon, use the environment fallback described below.
 
 ## Universal MCP contract
 
-The server uses stdio and reads two environment variables:
-
-- `BEGET_API_LOGIN` contains the hosting account login
-- `BEGET_API_KEY` contains the dedicated Hosting API password
-
-It does not call Codex APIs and does not require a Codex-specific launcher. A typical JSON-based MCP client can start it like this:
+The server uses stdio by default and loads credentials from the system keyring. It does not call Codex APIs and does not require a client-specific launcher. A typical JSON-based MCP client can start it like this:
 
 ```json
 {
   "mcpServers": {
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"],
-      "env": {
-        "BEGET_API_LOGIN": "your-beget-login",
-        "BEGET_API_KEY": "your-api-password"
-      }
+      "args": ["--stdio"]
     }
   }
 }
 ```
 
-Replace `/home/your-user`, the login, and the API password. This format works for clients that use the common `mcpServers` JSON structure.
+Replace `/home/your-user` with the real path. This format works for clients that use the common `mcpServers` JSON structure.
 
 ## Codex example
 
@@ -62,7 +74,6 @@ Codex uses TOML instead of the JSON structure above. Add this to `~/.codex/confi
 ```toml
 [mcp_servers.beget]
 command = "/home/your-user/.local/bin/beget-api-mcp-server"
-env = { BEGET_API_LOGIN = "your-beget-login", BEGET_API_KEY = "your-api-password" }
 ```
 
 Restart Codex after changing the configuration. This is only a Codex-specific representation of the same universal command and environment contract.
@@ -78,11 +89,7 @@ Add the Beget server using this JSON configuration:
   "mcpServers": {
     "beget": {
       "command": "/home/your-user/.local/bin/beget-api-mcp-server",
-      "args": ["--stdio"],
-      "env": {
-        "BEGET_API_LOGIN": "your-beget-login",
-        "BEGET_API_KEY": "your-api-password"
-      }
+      "args": ["--stdio"]
     }
   }
 }
@@ -96,9 +103,15 @@ If the process does not start, open `Help | Show Log in Explorer`, enter the `mc
 
 ## Secret storage
 
-Putting `BEGET_API_KEY` directly in a client configuration is the most compatible option, but it stores the password as plain text. Prefer a protected secret feature provided by the MCP client when one is available. A password-manager launcher that injects the environment variable only into the child process is another good option.
+The built-in system keyring is the recommended local setup. Environment variables take precedence when both are present:
 
-Secret manager commands differ between operating systems and products. Configure the chosen manager to start `beget-api-mcp-server` as a child process and inject `BEGET_API_KEY` into that process environment. Do not place the password in command-line arguments.
+```bash
+BEGET_API_LOGIN=your-beget-login \
+BEGET_API_KEY=your-api-password \
+beget-api-mcp-server --stdio
+```
+
+This fallback is intended for containers, CI, headless systems, and external password managers. Do not place the API key in command-line arguments or commit it to an MCP configuration.
 
 ## Install from a local clone
 
@@ -114,7 +127,7 @@ The client configuration does not need to change because the installed binary pa
 
 ## Update
 
-Run the installation command again:
+Download and replace the binary with a newer release archive, or repeat the Go installation command:
 
 ```bash
 GOBIN="$HOME/.local/bin" go install github.com/kordax/beget-api-mcp-server/cmd/beget-api-mcp-server@latest
@@ -124,7 +137,7 @@ Restart or reconnect the MCP server in the client so it starts the new binary.
 
 ## Remove
 
-Remove the Beget server entry from the MCP client, then delete `~/.local/bin/beget-api-mcp-server`.
+Run `beget-api-mcp-server credentials delete`, remove the Beget server entry from the MCP client, then delete the installed binary.
 
 ## Security notes
 
