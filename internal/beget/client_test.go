@@ -183,6 +183,9 @@ func TestConfiguredClientRecoversStoredCredentialsAndKeepsThemInMemory(t *testin
 func TestAPIErrorFormatting(t *testing.T) {
 	assert.Equal(t, "Beget dns/getData failed", (&APIError{Section: "dns", Method: "getData"}).Error())
 	assert.Equal(t, "Beget dns/getData failed: denied", (&APIError{Section: "dns", Method: "getData", Message: "denied"}).Error())
+	assert.True(t, (&APIError{Code: float64(1208)}).IsCode(1208))
+	assert.True(t, (&APIError{Code: "1208"}).IsCode(1208))
+	assert.False(t, (&APIError{Code: 7}).IsCode(1208))
 }
 
 func TestClientCallFailuresAndEmptyAnswer(t *testing.T) {

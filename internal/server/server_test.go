@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
+	"github.com/kordax/beget-api-mcp-server/internal/passwordpolicy"
 	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -140,6 +141,14 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 	passwordSchema, ok := ftpProperties["password"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, true, passwordSchema["writeOnly"])
+	mailProperties := schemaProperties(t, inputSchemaMap(t, tools["beget_change_mailbox_password"]))
+	mailPasswordSchema, ok := mailProperties["mailbox_password"].(map[string]any)
+	require.True(t, ok)
+	assert.EqualValues(t, passwordpolicy.MailboxMinimumLength, mailPasswordSchema["minLength"])
+	assert.EqualValues(t, passwordpolicy.MailboxMaximumLength, mailPasswordSchema["maxLength"])
+	assert.Equal(t, passwordpolicy.MailboxAllowedCharacterPattern(), mailPasswordSchema["pattern"])
+	assert.Contains(t, mailPasswordSchema["description"], "at least one letter, one digit, and one symbol")
+	assert.Equal(t, true, mailPasswordSchema["writeOnly"])
 	assertToolContract(t, tools["beget_change_mailbox_settings"],
 		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
 		[]string{"confirm", "domain", "forward_mail_status", "mailbox", "spam_filter", "spam_filter_status"},
@@ -174,7 +183,7 @@ func TestToolContractSnapshot(t *testing.T) {
 	assert.Len(t, result.Tools, 66)
 	assert.LessOrEqual(t, len(encoded), 66550, "tools/list contracts must remain at least 60%% smaller than the 166376-byte baseline")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "0bbcd270db1350bc6732aa514665f0a9a542f341d97bce1779bc22ef080e7f06", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "2c376b6701dff1cae2c8a36247384a705ed98f4f32a63ef8b9da07d9f075ef19", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestInvalidContractsDoNotReachBeget(t *testing.T) {
@@ -324,7 +333,7 @@ func TestMailboxPasswordChangeUsesMailEndpoint(t *testing.T) {
 
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name: "beget_change_mailbox_password", Arguments: map[string]any{
-			"domain": "example.com", "mailbox": "admin", "mailbox_password": "new-password", "confirm": true,
+			"domain": "example.com", "mailbox": "admin", "mailbox_password": "Newpassword1!", "confirm": true,
 		},
 	})
 	require.NoError(t, err)
@@ -334,9 +343,100 @@ func TestMailboxPasswordChangeUsesMailEndpoint(t *testing.T) {
 	assert.Equal(t, "changeMailboxPassword", caller.method)
 	parameters := callerInputMap(t, caller.input)
 	assert.Equal(t, map[string]any{
-		"domain": "example.com", "mailbox": "admin", "mailbox_password": "new-password",
+		"domain": "example.com", "mailbox": "admin", "mailbox_password": "Newpassword1!",
 	}, parameters)
 	assert.NotContains(t, parameters, "confirm", "confirm must not reach Beget")
+}
+
+func TestMailboxPasswordPolicyRejectsBeforeBeget(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	for name, testCase := range map[string]struct {
+		password string
+		expected string
+	}{
+		"missing class":         {password: "abcdef1", expected: "at least one allowed symbol"},
+		"too short":             {password: "A1!", expected: "mailbox_password"},
+		"unsupported character": {password: "Abc1! x", expected: "mailbox_password"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name: "beget_create_mailbox", Arguments: map[string]any{
+					"domain": "example.com", "mailbox": "admin", "mailbox_password": testCase.password, "confirm": true,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.True(t, result.IsError)
+			assert.Contains(t, callToolText(result), testCase.expected)
+			assert.NotContains(t, callToolText(result), testCase.password)
+		})
+	}
+	assert.Zero(t, caller.calls)
+}
+
+func TestWeakMailboxPasswordProviderErrorUsesSafeValidationGuidance(t *testing.T) {
+	password := "Strong1!"
+	caller := &fakeCaller{err: &beget.APIError{
+		Section: "mail", Method: "changeMailboxPassword", Code: float64(weakMailboxPasswordErrorCode), Message: "Password too weak",
+	}}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_change_mailbox_password", Arguments: map[string]any{
+			"domain": "example.com", "mailbox": "admin", "mailbox_password": password, "confirm": true,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsError)
+	assert.Contains(t, callToolText(result), "rejected by Beget as too weak")
+	assert.Contains(t, callToolText(result), "6 to 64 characters")
+	assert.Contains(t, callToolText(result), "at least one letter, one digit, and one symbol")
+	assert.NotContains(t, callToolText(result), password)
+}
+
+func TestWeakMailboxPasswordMappingReportsMissingClasses(t *testing.T) {
+	password := "abcdef"
+	mapped := mapBegetError("mail", "createMailbox", json.RawMessage(`{"mailbox_password":"abcdef"}`), &beget.APIError{
+		Section: "mail", Method: "createMailbox", Code: "1208", Message: "Password too weak",
+	})
+
+	assert.ErrorContains(t, mapped, "at least one digit")
+	assert.ErrorContains(t, mapped, "at least one allowed symbol")
+	assert.NotContains(t, mapped.Error(), password)
+}
+
+func TestSensitiveSchemaErrorsRedactManagedPasswords(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+	password := "Q7!"
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_add_mysql_database", Arguments: map[string]any{
+			"suffix": "database", "password": password, "confirm": true,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.True(t, result.IsError)
+	assert.Contains(t, callToolText(result), "[REDACTED]")
+	assert.NotContains(t, callToolText(result), password)
+
+	mailboxPassword := "abcdef1"
+	result, err = session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_change_mailbox_password", Arguments: map[string]any{
+			"domain": "example.com", "mailbox": "admin", "mailbox_password": mailboxPassword, "confirm": false,
+		},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, callToolText(result), "confirm must be true")
+	assert.NotContains(t, callToolText(result), mailboxPassword)
+	assert.Zero(t, caller.calls)
 }
 
 func TestPublishedMutationRequiresConfirmation(t *testing.T) {
@@ -638,8 +738,8 @@ func validOperationArguments() map[string]map[string]any {
 		"beget_add_domain_directives":        withConfirm(map[string]any{"full_fqdn": "example.com", "directives_list": []map[string]any{{"name": "php_flag", "value": "log_errors on"}}}),
 		"beget_remove_domain_directives":     withConfirm(map[string]any{"full_fqdn": "example.com", "directives_list": []map[string]any{{"name": "php_flag", "value": "log_errors on"}}}),
 		"beget_list_mailboxes":               {"domain": "example.com"},
-		"beget_change_mailbox_password":      withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "mailbox_password": "secret"}),
-		"beget_create_mailbox":               withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "mailbox_password": "secret"}),
+		"beget_change_mailbox_password":      withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "mailbox_password": "Secret1!"}),
+		"beget_create_mailbox":               withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "mailbox_password": "Secret1!"}),
 		"beget_delete_mailbox":               withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin"}),
 		"beget_change_mailbox_settings":      withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "spam_filter_status": 1, "spam_filter": 20, "forward_mail_status": "forward"}),
 		"beget_add_mail_forwarding":          withConfirm(map[string]any{"domain": "example.com", "mailbox": "admin", "forward_mailbox": "target@example.net"}),

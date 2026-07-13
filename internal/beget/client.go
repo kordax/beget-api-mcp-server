@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -86,6 +87,10 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("Beget %s/%s failed: %s", e.Section, e.Method, e.Message)
 	}
 	return fmt.Sprintf("Beget %s/%s failed", e.Section, e.Method)
+}
+
+func (e *APIError) IsCode(code int) bool {
+	return fmt.Sprint(e.Code) == strconv.Itoa(code)
 }
 
 func NewClient(baseURL, login, apiKey string, httpClient HTTPClient) (*Client, error) {

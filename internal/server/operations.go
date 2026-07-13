@@ -10,6 +10,7 @@ import (
 	"slices"
 
 	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/kordax/beget-api-mcp-server/internal/passwordpolicy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -145,8 +146,14 @@ func applyDefaultPropertyRules(name string, property *jsonschema.Schema) {
 		property.Pattern = `^[0-9*/,\-]+$`
 	case "php_version":
 		property.Pattern = `^[0-9]+(\.[0-9]+)*$`
-	case "password", "mailbox_password":
+	case "password":
 		property.WriteOnly = true
+	case "mailbox_password":
+		minimum, maximum := passwordpolicy.MailboxMinimumLength, passwordpolicy.MailboxMaximumLength
+		property.MinLength, property.MaxLength = &minimum, &maximum
+		property.Pattern = passwordpolicy.MailboxAllowedCharacterPattern()
+		property.WriteOnly = true
+		property.Description += ". " + passwordpolicy.MailboxRequirement()
 	case "forward_mailbox", "domain_mailbox":
 		property.Format = "email"
 	case "paths":

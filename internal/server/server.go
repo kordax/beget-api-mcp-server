@@ -103,7 +103,7 @@ func newServer(client beget.Caller, checker releaseChecker, now func() time.Time
 		Instructions: serverInstructions,
 	})
 	monitor := &updateMonitor{checker: checker, now: now, lastCommand: now()}
-	server.AddReceivingMiddleware(monitor.middleware)
+	server.AddReceivingMiddleware(redactSensitiveToolErrors, monitor.middleware)
 	addToolWithSchema(server, localReadTool("beget_auth_status", "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."), service.authenticationStatus)
 
 	service.addOperations(server)
@@ -234,7 +234,7 @@ func (s *service) unfreezeSite(ctx context.Context, _ *mcp.CallToolRequest, inpu
 func (s *service) call(ctx context.Context, section, method string, input any) (*mcp.CallToolResult, APIOutput, error) {
 	rawAnswer, err := s.client.Call(ctx, section, method, input)
 	if err != nil {
-		return nil, APIOutput{}, err
+		return nil, APIOutput{}, mapBegetError(section, method, input, err)
 	}
 	var answer any
 	if err := json.Unmarshal(rawAnswer, &answer); err != nil {

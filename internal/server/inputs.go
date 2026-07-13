@@ -4,6 +4,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/mail"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/kordax/beget-api-mcp-server/internal/passwordpolicy"
 )
 
 type Confirmation struct {
@@ -307,11 +310,17 @@ type MailboxPasswordInput struct {
 	Confirmation
 	Domain          string `json:"domain" jsonschema:"domain containing the mailbox"`
 	Mailbox         string `json:"mailbox" jsonschema:"mailbox local part returned by beget_list_mailboxes"`
-	MailboxPassword string `json:"mailbox_password" jsonschema:"new mailbox password; never repeat it in summaries or logs"`
+	MailboxPassword string `json:"mailbox_password" jsonschema:"new mailbox password governed by the published mailbox policy; never repeat it in summaries or logs"`
 }
 
 func (input MailboxPasswordInput) validate() error {
-	return validateMailbox(input.Domain, input.Mailbox)
+	if err := validateMailbox(input.Domain, input.Mailbox); err != nil {
+		return err
+	}
+	if message := passwordpolicy.ValidationMessage(input.MailboxPassword); message != "" {
+		return errors.New(message)
+	}
+	return nil
 }
 
 type MailboxInput struct {
