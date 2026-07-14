@@ -24,8 +24,8 @@ const (
 	authStatusDescription              = "Check whether Beget credentials are configured. Call this first when authorization state is unknown; an unconfigured result is a setup request, not an MCP transport failure."
 	serverCapabilitiesDescription      = "Read server version and supported Beget methods, mutations, dry-run, confirmation, idempotency, secret-reference, and rotation capabilities. This is local metadata and never reveals credential configuration."
 	validateMailboxPasswordDescription = "Validate a candidate mailbox_password against the confirmed Beget policy without a network request. Returns only stable violation codes and safe messages, never the password; Beget credentials and confirmation are not required."
-	getDNSDescription                  = "Read active DNS records for fqdn. Use the returned record group as the current state before beget_change_dns_records."
-	changeDNSDescription               = "Replace the complete live DNS record group for fqdn. Read beget_get_dns_records first and verify with it afterward. Requires explicit confirm=true after user approval."
+	getDNSDescription                  = "Read the complete active DNS record set for fqdn. Before beget_change_dns_records, keep this full result and merge only the intended edits into it; omitted existing records will be deleted."
+	changeDNSDescription               = "Replace the entire live DNS record set for fqdn. Beget deletes every existing record omitted from records, so first read with beget_get_dns_records and submit all existing record groups plus the intended edits. Verify afterward. Requires explicit confirm=true after user approval."
 	freezeSiteDescription              = "Make files for the site id from beget_list_sites read-only, except optional safe relative paths. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
 	unfreezeDescription                = "Restore writes for the site id from beget_list_sites. Verify with beget_is_site_frozen. Requires explicit confirm=true after user approval."
 )

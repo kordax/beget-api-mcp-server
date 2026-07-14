@@ -44,6 +44,10 @@ Use list tools to discover current resources and identifiers. Similar identifier
 
 Call `beget_server_capabilities` only when the user or workflow needs machine-readable server features or the exact supported Beget method list. It is local metadata and intentionally does not report whether credentials are configured; use `beget_auth_status` for that separate question.
 
+## DNS replacements
+
+`beget_change_dns_records` replaces the entire DNS record set. Beget deletes every existing record omitted from `records`. Always read `beget_get_dns_records`, merge only the requested edits into that complete result, and submit every record group that must remain, including unchanged A and MX records.
+
 ## Dry runs
 
 Every mutating tool accepts `dry_run`. Use `dry_run: true` with `confirm: false` when local validation is useful before asking for approval. A successful dry run returns `changed: false` and a `dry_run` assessment covering the input, configured-credentials prerequisite, and confirmation prerequisite.

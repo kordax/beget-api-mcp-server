@@ -49,7 +49,7 @@ type DNSRecords struct {
 type ChangeDNSInput struct {
 	Confirmation
 	FQDN    string     `json:"fqdn" jsonschema:"fully qualified domain name managed by Beget"`
-	Records DNSRecords `json:"records" jsonschema:"complete replacement record group accepted by Beget"`
+	Records DNSRecords `json:"records" jsonschema:"entire replacement record set; omitted existing records are deleted, so preserve every group returned by beget_get_dns_records"`
 }
 
 type FreezeSiteInput struct {

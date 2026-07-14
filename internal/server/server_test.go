@@ -181,6 +181,10 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 		[]string{"confirm", "dry_run", "homedir", "password", "suffix"},
 		[]string{"confirm", "homedir", "password", "suffix"},
 	)
+	dnsChange := tools["beget_change_dns_records"]
+	assert.Contains(t, dnsChange.Description, "deletes every existing record omitted")
+	dnsRecordsSchema := schemaProperties(t, inputSchemaMap(t, dnsChange))["records"].(map[string]any)
+	assert.Contains(t, dnsRecordsSchema["description"], "omitted existing records are deleted")
 	ftpProperties := schemaProperties(t, inputSchemaMap(t, tools["beget_add_ftp_account"]))
 	passwordSchema, ok := ftpProperties["password"].(map[string]any)
 	require.True(t, ok)
@@ -233,9 +237,9 @@ func TestToolContractSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(result.Tools)
 	require.NoError(t, err)
 	assert.Len(t, result.Tools, 68)
-	assert.LessOrEqual(t, len(encoded), 170000, "typed contracts must remain compact after adding explicit dry-run results")
+	assert.LessOrEqual(t, len(encoded), 171000, "typed contracts must remain compact after adding explicit safety guidance")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "4fb9fc16da9e441c948c80168cfa149402226a262aa28eb176fae1e7fc94acfc", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "0d83e069d25634ff5e91c6fb2d3992c432073a94436bde4293ffbf1fccb9d0c2", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
@@ -327,7 +331,7 @@ func TestOperationCatalogSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(contracts)
 	require.NoError(t, err)
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "0c0c2b0be36909238f2de401e142693478f0a794ef94e1376f43facae14725bd", actual, "intentional operation catalog changes require updating this snapshot")
+	assert.Equal(t, "b65274853192c6b5d0a3f2c25ffb0a7a32862379072c978733b3524a00e03561", actual, "intentional operation catalog changes require updating this snapshot")
 }
 
 func TestToolsExposeTypedOutputContracts(t *testing.T) {
