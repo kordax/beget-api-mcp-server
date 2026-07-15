@@ -151,6 +151,8 @@ func TestInitializeProvidesUniversalAgentInstructions(t *testing.T) {
 	assert.Contains(t, result.Instructions, "dry_run=true")
 	assert.Contains(t, result.Instructions, "no Beget request")
 	assert.Contains(t, result.Instructions, "never guarantees provider acceptance")
+	assert.Contains(t, result.Instructions, "exactly one logical Beget group")
+	assert.Contains(t, result.Instructions, "empty-value records")
 	assert.Contains(t, result.Instructions, "Never guess identifiers")
 	assert.Contains(t, result.Instructions, "confirm=true")
 	assert.Contains(t, result.Instructions, "result.changed")
@@ -182,9 +184,15 @@ func TestToolsExposeExactInputContracts(t *testing.T) {
 		[]string{"confirm", "homedir", "password", "suffix"},
 	)
 	dnsChange := tools["beget_change_dns_records"]
-	assert.Contains(t, dnsChange.Description, "deletes every existing record omitted")
+	assert.Contains(t, dnsChange.Description, "Replace exactly one logical Beget record group")
+	assert.Contains(t, dnsChange.Description, "omit all other groups, empty arrays, and empty-value provider placeholders")
+	assert.Contains(t, dnsChange.Description, "dry_run=true and confirm=false is local")
 	dnsRecordsSchema := schemaProperties(t, inputSchemaMap(t, dnsChange))["records"].(map[string]any)
-	assert.Contains(t, dnsRecordsSchema["description"], "omitted existing records are deleted")
+	assert.Contains(t, dnsRecordsSchema["description"], "exactly one replacement group")
+	assert.Contains(t, dnsRecordsSchema["description"], "omit all other and empty groups")
+	dnsRecordGroups := schemaProperties(t, dnsRecordsSchema)
+	assert.Contains(t, dnsRecordGroups["DNS_IP"].(map[string]any)["description"], "only with at least one DNS record")
+	assert.Contains(t, dnsRecordGroups["DNS_IP"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)["value"].(map[string]any)["description"], "omit provider placeholder records")
 	ftpProperties := schemaProperties(t, inputSchemaMap(t, tools["beget_add_ftp_account"]))
 	passwordSchema, ok := ftpProperties["password"].(map[string]any)
 	require.True(t, ok)
@@ -237,9 +245,9 @@ func TestToolContractSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(result.Tools)
 	require.NoError(t, err)
 	assert.Len(t, result.Tools, 68)
-	assert.LessOrEqual(t, len(encoded), 171000, "typed contracts must remain compact after adding explicit safety guidance")
+	assert.LessOrEqual(t, len(encoded), 172000, "typed contracts must remain compact after adding explicit safety guidance")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "0d83e069d25634ff5e91c6fb2d3992c432073a94436bde4293ffbf1fccb9d0c2", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "5de1cf38b1a96de2f56aaef5d9f8d3533a9e7e29969a3ab0d5cfc2bb9c4309b2", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
@@ -331,7 +339,7 @@ func TestOperationCatalogSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(contracts)
 	require.NoError(t, err)
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "b65274853192c6b5d0a3f2c25ffb0a7a32862379072c978733b3524a00e03561", actual, "intentional operation catalog changes require updating this snapshot")
+	assert.Equal(t, "a2940c45fcd15d70da5f0d09da4c7b3b198bc8cf74b65cc648c58ebbec2ebd42", actual, "intentional operation catalog changes require updating this snapshot")
 }
 
 func TestToolsExposeTypedOutputContracts(t *testing.T) {
@@ -471,6 +479,69 @@ func TestInvalidContractsDoNotReachBeget(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Truef(t, result.IsError, "%s should reject invalid arguments", call.Name)
+	}
+	assert.Zero(t, caller.calls)
+}
+
+func TestDNSValidationProvidesSpecificLocalRecoveryWithoutCallingBeget(t *testing.T) {
+	caller := &fakeCaller{}
+	session, closeSessions := connectTestClient(t, caller)
+	defer closeSessions()
+
+	tests := map[string]struct {
+		records         map[string]any
+		expectedField   string
+		expectedMessage string
+	}{
+		"mixed logical groups": {
+			records: map[string]any{
+				"A":  []map[string]any{{"priority": 0, "value": "192.0.2.1"}},
+				"NS": []map[string]any{{"priority": 0, "value": "ns.example.com"}},
+			},
+			expectedField: "records",
+		},
+		"empty group": {
+			records: map[string]any{
+				"A":  []map[string]any{{"priority": 0, "value": "192.0.2.1"}},
+				"NS": []map[string]any{},
+			},
+			expectedField:   "records.NS",
+			expectedMessage: "omit the empty group instead",
+		},
+		"empty DNS IP placeholder": {
+			records: map[string]any{
+				"DNS":    []map[string]any{{"priority": 0, "value": "ns.example.com"}},
+				"DNS_IP": []map[string]any{{"priority": 0, "value": ""}},
+			},
+			expectedField:   "records.DNS_IP.value",
+			expectedMessage: "omit empty-value provider placeholders",
+		},
+	}
+
+	for name, testCase := range tests {
+		t.Run(name, func(t *testing.T) {
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+				Name: "beget_change_dns_records",
+				Arguments: map[string]any{
+					"confirm": false, "dry_run": true, "fqdn": "example.com", "records": testCase.records,
+				},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.True(t, result.IsError)
+			output := structuredMap(t, result)
+			assert.Equal(t, false, output["success"])
+			assert.Equal(t, false, output["result"].(map[string]any)["changed"])
+			errorsList := output["errors"].([]any)
+			require.Len(t, errorsList, 1)
+			toolError := errorsList[0].(map[string]any)
+			assert.Equal(t, testCase.expectedField, toolError["field"])
+			assert.Contains(t, toolError["next_step"], "Choose exactly one group")
+			assert.Contains(t, toolError["next_step"], "omit every other group and every empty array")
+			if testCase.expectedMessage != "" {
+				assert.Contains(t, toolError["message"], testCase.expectedMessage)
+			}
+		})
 	}
 	assert.Zero(t, caller.calls)
 }

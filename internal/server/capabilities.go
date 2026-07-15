@@ -56,7 +56,7 @@ var capabilitySections = map[string]capabilitySection{
 	},
 	"dns": {
 		name:          "dns",
-		scenario:      "Read the complete active record group before replacing it, then read it again to verify propagation state.",
+		scenario:      "Read all active records, replace exactly one complete logical group without copying empty placeholders, then read again to verify propagation state.",
 		documentation: "https://beget.com/ru/kb/api/funkczii-upravleniya-dns",
 	},
 	"ftp": {

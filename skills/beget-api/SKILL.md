@@ -46,13 +46,24 @@ Call `beget_server_capabilities` only when the user or workflow needs machine-re
 
 ## DNS replacements
 
-`beget_change_dns_records` replaces the entire DNS record set. Beget deletes every existing record omitted from `records`. Always read `beget_get_dns_records`, merge only the requested edits into that complete result, and submit every record group that must remain, including unchanged A and MX records.
+Each `beget_change_dns_records` call replaces exactly one logical Beget record group. The accepted groups are:
+
+- `A`, `MX`, and `TXT` together
+- `NS` alone
+- `CNAME` alone with exactly one record
+- `DNS` with optional `DNS_IP`; at least one `DNS` record is required
+
+Always read `beget_get_dns_records`, choose the group being changed, and preserve every existing record inside that group. For example, a TXT change must submit the complete intended `A/MX/TXT` group, including unchanged A and MX records. Omit every other logical group because Beget leaves those groups unchanged.
+
+Never copy the complete read result into `records`. Omit empty arrays and omit provider placeholder entries whose `value` is empty, especially empty `DNS_IP` entries. A validation failure naming `records` means the candidate shape was rejected locally; it is not an authorization or provider failure.
 
 ## Dry runs
 
 Every mutating tool accepts `dry_run`. Use `dry_run: true` with `confirm: false` when local validation is useful before asking for approval. A successful dry run returns `changed: false` and a `dry_run` assessment covering the input, configured-credentials prerequisite, and confirmation prerequisite.
 
 Dry-run scope is `local`: it sends no request to Beget, does not test remote permissions or undocumented provider constraints, and never guarantees that Beget will accept the later mutation. Treat `status: ready` only as readiness for a real confirmed call; other stable statuses name missing credentials, confirmation, or both. Do not run dry-run routinely when the schema and prerequisites are already clear, and never treat it as user approval.
+
+A rejected dry run returns `success: false` and `changed: false`. That result means only that local schema or semantic validation rejected the candidate. It does not mean that Beget authorization failed, that Beget rejected a request, or that any remote state changed.
 
 ## Read before write
 

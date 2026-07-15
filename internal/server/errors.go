@@ -20,7 +20,13 @@ const weakMailboxPasswordErrorCode = 1208
 
 var sensitiveToolFields = []string{"password", "mailbox_password"}
 
-var validationFieldPattern = regexp.MustCompile(`(?:/properties/|^)([a-z][a-z0-9_]*)`)
+var (
+	validationPropertyPathPattern = regexp.MustCompile(`/properties/[A-Za-z][A-Za-z0-9_]*(?:(?:/properties/[A-Za-z][A-Za-z0-9_]*)|/items)*`)
+	validationPropertyNamePattern = regexp.MustCompile(`/properties/([A-Za-z][A-Za-z0-9_]*)`)
+	validationLeadingFieldPattern = regexp.MustCompile(`^([a-z][a-z0-9_]*)`)
+)
+
+const dnsValidationNextStep = "Choose exactly one group: A/MX/TXT, NS, CNAME, or DNS/DNS_IP. Preserve every record in that selected group, omit every other group and every empty array, and omit provider placeholder records whose value is empty. Then retry local validation without guessing values."
 
 func successfulOutput[Result any](result Result) ToolOutput[Result] {
 	return ToolOutput[Result]{Success: true, Result: &result, Errors: []ToolError{}}
@@ -43,6 +49,14 @@ func mutationValidationFailure[Details any](err error) (*mcp.CallToolResult, Too
 	return failedMutationOutput[Details](validationToolError(err.Error()))
 }
 
+func dnsRecordsValidationFailure[Details any](err error) (*mcp.CallToolResult, ToolOutput[MutationResult[Details]], error) {
+	toolError := dnsValidationToolError(err.Error())
+	if !strings.HasPrefix(toolError.Field, "records") {
+		toolError.Field = "records"
+	}
+	return failedMutationOutput[Details](toolError)
+}
+
 func mutationConfirmationFailure[Details any](name string) (*mcp.CallToolResult, ToolOutput[MutationResult[Details]], error) {
 	return failedMutationOutput[Details](ToolError{
 		Type: ErrorConfirmationFailure, Code: "confirmation_required", Field: "confirm",
@@ -58,8 +72,35 @@ func validationToolError(message string) ToolError {
 	}
 }
 
+func dnsValidationToolError(message string) ToolError {
+	toolError := validationToolError(message)
+	if strings.Contains(message, "minLength") && strings.HasSuffix(toolError.Field, ".value") {
+		toolError.Message = toolError.Field + " must not be empty; omit empty-value provider placeholders instead of submitting them"
+	}
+	if strings.Contains(message, "minItems") && strings.HasPrefix(toolError.Field, "records.") {
+		toolError.Message = toolError.Field + " must not be an empty array; omit the empty group instead"
+	}
+	toolError.NextStep = dnsValidationNextStep
+	return toolError
+}
+
 func validationField(message string) string {
-	match := validationFieldPattern.FindStringSubmatch(message)
+	paths := validationPropertyPathPattern.FindAllString(message, -1)
+	if len(paths) > 0 {
+		longest := paths[0]
+		for _, path := range paths[1:] {
+			if len(path) > len(longest) {
+				longest = path
+			}
+		}
+		matches := validationPropertyNamePattern.FindAllStringSubmatch(longest, -1)
+		fields := make([]string, 0, len(matches))
+		for _, match := range matches {
+			fields = append(fields, match[1])
+		}
+		return strings.Join(fields, ".")
+	}
+	match := validationLeadingFieldPattern.FindStringSubmatch(message)
 	if len(match) == 2 {
 		return match[1]
 	}
@@ -178,10 +219,14 @@ func redactSensitiveToolErrors(next mcp.MethodHandler) mcp.MethodHandler {
 			return result, err
 		}
 
+		toolError := validationToolError(message)
+		if callRequest.Params.Name == "beget_change_dns_records" && strings.HasPrefix(toolError.Field, "records") {
+			toolError = dnsValidationToolError(message)
+		}
 		failure := map[string]any{
 			"success": false,
 			"result":  nil,
-			"errors":  []ToolError{validationToolError(message)},
+			"errors":  []ToolError{toolError},
 		}
 		if isMutatingTool(callRequest.Params.Name) {
 			failure["result"] = map[string]any{"changed": false}

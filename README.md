@@ -46,7 +46,7 @@ Every mutation accepts optional `dry_run`. With `dry_run: true` and `confirm: fa
 
 An ordinary MCP tool call makes at most one Beget HTTP request. The server does not add hidden preflight reads: any read-before-write or verification step remains an explicit agent action. The shared HTTP client reuses connections, propagates MCP cancellation through `context`, and rejects responses larger than 4 MiB without buffering the remainder.
 
-DNS changes accept the record groups supported by Beget: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`. `beget_change_dns_records` replaces the entire record set, so omitted existing records are deleted. Read the current set first, merge the requested edits, and submit every record group that must remain.
+Each `beget_change_dns_records` call replaces exactly one logical Beget group: `A/MX/TXT`, `NS`, `CNAME`, or `DNS/DNS_IP`. Read the current set first, preserve every record inside the selected group, and apply the requested edit there. Omit all other groups, empty arrays, and provider placeholder entries whose `value` is empty. Do not copy the complete result of `beget_get_dns_records` back into the mutation.
 
 ## Architecture
 

@@ -24,7 +24,7 @@ type NoArgs struct{}
 const (
 	updateCheckIdleInterval = 10 * time.Minute
 	updateCheckTimeout      = 5 * time.Second
-	serverInstructions      = `Use beget_auth_status before the first Beget API operation when authorization state is unknown. Read current state and obtain resource identifiers from the matching list tool before a mutation. Never guess identifiers, domains, enum values, settings, or secrets. Use dry_run=true with confirm=false only when local validation is useful; it sends no Beget request and never guarantees provider acceptance. Describe the exact target and change, obtain explicit user approval, and only then call one mutating tool with confirm=true. Read success, the typed result, every machine-readable error type, and its next_step; for mutations always inspect result.changed. Verify a successful mutation with the matching read-only tool when available. Never retry a mutation automatically after a timeout, disconnect, or unknown_outcome; read the current state first. Each ordinary Beget tool call sends at most one provider request and performs no hidden preflight read. Treat authorization as a credentials setup request, not as an MCP transport failure. Never request or pass a Beget API key as a tool argument.`
+	serverInstructions      = `Use beget_auth_status before the first Beget API operation when authorization state is unknown. Read current state and obtain resource identifiers from the matching list tool before a mutation. Never guess identifiers, domains, enum values, settings, or secrets. Use dry_run=true with confirm=false only when local validation is useful; it sends no Beget request and never guarantees provider acceptance. For beget_change_dns_records, submit exactly one logical Beget group per call: A/MX/TXT, NS, CNAME, or DNS/DNS_IP. Preserve every existing record within the selected group, but omit all other groups, empty arrays, and empty-value records returned as provider placeholders. Describe the exact target and change, obtain explicit user approval, and only then call one mutating tool with confirm=true. Read success, the typed result, every machine-readable error type, and its next_step; for mutations always inspect result.changed. Verify a successful mutation with the matching read-only tool when available. Never retry a mutation automatically after a timeout, disconnect, or unknown_outcome; read the current state first. Each ordinary Beget tool call sends at most one provider request and performs no hidden preflight read. Treat authorization as a credentials setup request, not as an MCP transport failure. Never request or pass a Beget API key as a tool argument.`
 )
 
 type DNSInput struct {
@@ -33,23 +33,23 @@ type DNSInput struct {
 
 type DNSRecord struct {
 	Priority int    `json:"priority" jsonschema:"record priority"`
-	Value    string `json:"value" jsonschema:"record value"`
+	Value    string `json:"value" jsonschema:"non-empty record value; omit provider placeholder records whose value is empty"`
 }
 
 type DNSRecords struct {
-	A     []DNSRecord `json:"A,omitempty"`
-	MX    []DNSRecord `json:"MX,omitempty"`
-	TXT   []DNSRecord `json:"TXT,omitempty"`
-	NS    []DNSRecord `json:"NS,omitempty"`
-	CNAME []DNSRecord `json:"CNAME,omitempty"`
-	DNS   []DNSRecord `json:"DNS,omitempty"`
-	DNSIP []DNSRecord `json:"DNS_IP,omitempty"`
+	A     []DNSRecord `json:"A,omitempty" jsonschema:"A records in the combined A/MX/TXT group"`
+	MX    []DNSRecord `json:"MX,omitempty" jsonschema:"MX records in the combined A/MX/TXT group"`
+	TXT   []DNSRecord `json:"TXT,omitempty" jsonschema:"TXT records in the combined A/MX/TXT group"`
+	NS    []DNSRecord `json:"NS,omitempty" jsonschema:"standalone NS group; do not combine with another group"`
+	CNAME []DNSRecord `json:"CNAME,omitempty" jsonschema:"standalone CNAME group containing exactly one record"`
+	DNS   []DNSRecord `json:"DNS,omitempty" jsonschema:"DNS records in the combined DNS/DNS_IP group; at least one is required when DNS_IP is present"`
+	DNSIP []DNSRecord `json:"DNS_IP,omitempty" jsonschema:"optional non-empty DNS_IP records used only with at least one DNS record"`
 }
 
 type ChangeDNSInput struct {
 	Confirmation
 	FQDN    string     `json:"fqdn" jsonschema:"fully qualified domain name managed by Beget"`
-	Records DNSRecords `json:"records" jsonschema:"entire replacement record set; omitted existing records are deleted, so preserve every group returned by beget_get_dns_records"`
+	Records DNSRecords `json:"records" jsonschema:"exactly one replacement group: A/MX/TXT, NS, CNAME, or DNS/DNS_IP; preserve every existing record within that selected group, omit all other and empty groups, and omit empty-value provider placeholders"`
 }
 
 type FreezeSiteInput struct {
@@ -183,7 +183,7 @@ func (s *service) changeDNSRecords(ctx context.Context, _ *mcp.CallToolRequest, 
 		return mutationValidationFailure[APIBool](err)
 	}
 	if err := validateDNSRecords(input.Records); err != nil {
-		return mutationValidationFailure[APIBool](err)
+		return dnsRecordsValidationFailure[APIBool](err)
 	}
 	if input.DryRun {
 		return localMutationDryRun[APIBool](s, input.Confirm)
