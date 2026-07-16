@@ -1,52 +1,54 @@
-# Beget API MCP Server
+# MCP-сервер для Beget API
 
-[Русская версия](README.ru.md)
+<!-- Документация структурирована для людей и оптимизирована для парсинга ИИ-агентами. -->
 
-A small local MCP server for managing Beget hosting from GoLand, Codex, and other MCP clients. It exposes typed tools, and every hosting change requires explicit user confirmation.
+[English version](README.en.md)
 
-## 1. Requirements
+Небольшой локальный MCP-сервер для управления хостингом Beget из GoLand, Codex и других MCP-клиентов. Он предоставляет типизированные инструменты, а любое изменение хостинга требует явного подтверждения пользователя.
 
-- A Beget hosting account with Hosting API enabled and a separate API password.
-- Linux, macOS, or Windows on `amd64` or `arm64`.
-- On Linux and macOS: `curl`, `tar`, `awk`, `mktemp`, `install`, and either `sha256sum` or `shasum`. Windows uses PowerShell. Go is not required.
-- An MCP-capable client for agent use. The GoLand example requires JetBrains AI Assistant; the Codex example requires Codex CLI.
+## 1. Что требуется
 
-## 2. Install
+- Аккаунт хостинга Beget с включенным Hosting API и отдельным паролем API.
+- Linux, macOS или Windows на `amd64` либо `arm64`.
+- В Linux и macOS: `curl`, `tar`, `awk`, `mktemp`, `install` и `sha256sum` либо `shasum`. В Windows используется PowerShell. Устанавливать Go не нужно.
+- MCP-клиент для работы с агентами. Для примера с GoLand нужен JetBrains AI Assistant, для примера с Codex нужен Codex CLI.
 
-On Linux or macOS:
+## 2. Как установить
+
+В Linux или macOS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.sh | sh
 ```
 
-On Windows PowerShell:
+В Windows PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/kordax/beget-api-mcp-server/main/install.ps1 | iex
 ```
 
-The installer selects the latest release for the current system and architecture, verifies its SHA-256 checksum, adds `beget-api-mcp-server` to the user `PATH`, and installs the bundled `beget-api` skill for Codex.
+Установщик выберет последний выпуск для текущей системы и архитектуры, проверит его контрольную сумму SHA-256, добавит `beget-api-mcp-server` в пользовательский `PATH` и установит встроенный skill `beget-api` для Codex.
 
-Restart the terminal and any open IDE, then verify the installation:
+Перезапустите терминал и открытые IDE, затем проверьте установку:
 
 ```bash
 beget-api-mcp-server help
 ```
 
-Enable Hosting API in the Beget control panel and create a dedicated API password. Store the credentials once:
+Включите Hosting API в панели Beget и создайте отдельный пароль API. Один раз сохраните данные доступа:
 
 ```bash
 beget-api-mcp-server credentials set --login <beget-login>
 beget-api-mcp-server credentials check
 ```
 
-The API password is read from a hidden prompt and must not be passed as a command argument. All local MCP clients for the same user read the same protected credential store.
+Пароль API вводится через скрытый запрос и не должен передаваться аргументом команды. Все локальные MCP-клиенты одного пользователя читают общее защищенное хранилище credentials.
 
-## 3. Configure GoLand globally
+## 3. Как настроить GoLand глобально
 
-1. Make sure the JetBrains AI Assistant plugin is enabled.
-2. Open `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`.
-3. Click `Add`, choose an STDIO JSON configuration, set `Server level` to `Global`, and paste:
+1. Убедитесь, что плагин JetBrains AI Assistant включен.
+2. Откройте `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`.
+3. Нажмите `Add`, выберите JSON-конфигурацию STDIO, установите `Server level` в `Global` и вставьте:
 
 ```json
 {
@@ -58,14 +60,14 @@ The API password is read from a hidden prompt and must not be passed as a comman
 }
 ```
 
-4. Click `OK`, then `Apply`. The status must show a successful connection; its tools button must list the Beget tools.
-5. To expose the server to JetBrains agents such as Junie, open `Settings | Tools | AI Assistant | Agents` and enable `Pass custom MCP servers`.
+4. Нажмите `OK`, затем `Apply`. В статусе должно появиться успешное подключение, а кнопка инструментов должна показывать инструменты Beget.
+5. Чтобы сервер был доступен агентам JetBrains, например Junie, откройте `Settings | Tools | AI Assistant | Agents` и включите `Pass custom MCP servers`.
 
-If GoLand cannot find the command, restart the IDE so it receives the updated user `PATH`, then reconnect the server.
+Если GoLand не находит команду, перезапустите IDE, чтобы она получила обновленный пользовательский `PATH`, затем переподключите сервер.
 
-## 4. Use from the terminal and with AI agents
+## 4. Как использовать из консоли и с ИИ-агентами
 
-The command line manages the local server, credentials, and updates:
+Из консоли можно управлять локальным сервером, credentials и обновлениями:
 
 ```bash
 beget-api-mcp-server help
@@ -74,15 +76,15 @@ beget-api-mcp-server upgrade --check
 beget-api-mcp-server upgrade
 ```
 
-Running `beget-api-mcp-server` without a subcommand starts its STDIO transport and waits for an MCP client. It is not an interactive Beget shell. Hosting operations are available as MCP tools and are normally invoked by GoLand, Codex, or another MCP client.
+Запуск `beget-api-mcp-server` без подкоманды включает STDIO-транспорт и ожидает MCP-клиента. Это не интерактивная консоль Beget. Операции с хостингом доступны как MCP-инструменты, которые обычно вызывает GoLand, Codex или другой MCP-клиент.
 
-Add the server globally to Codex:
+Добавьте сервер в глобальную конфигурацию Codex:
 
 ```bash
 codex mcp add beget -- beget-api-mcp-server
 codex mcp list
 ```
 
-Start a new Codex session and use `/mcp` to verify the connection. The installer has already added the `beget-api` skill, which teaches Codex the safe workflow.
+Откройте новую сессию Codex и выполните `/mcp`, чтобы проверить подключение. Установщик уже добавил skill `beget-api`, который объясняет Codex безопасный порядок работы.
 
-You can now ask, for example, “Check whether Beget authorization is configured” or “List my sites and their domains.” Before a hosting change, the agent must read the current state, describe the exact change, and ask for explicit confirmation.
+Теперь можно попросить: «Проверь, настроена ли авторизация Beget» или «Покажи мои сайты и их домены». Перед изменением хостинга агент должен прочитать текущее состояние, описать точное изменение и запросить явное подтверждение.
