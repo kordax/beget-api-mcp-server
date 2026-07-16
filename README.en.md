@@ -1,6 +1,6 @@
 # Beget API MCP Server
 
-<!-- This documentation is structured for people and optimized for AI-agent parsing. -->
+> Both the Russian and English documentation are optimized for AI parsing.
 
 [Русская версия](README.md)
 
