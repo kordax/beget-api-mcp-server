@@ -282,11 +282,13 @@ func TestConfiguredClientValidatesBaseURLAndDefaultsHTTPClient(t *testing.T) {
 	assert.ErrorIs(t, &AuthenticationError{Cause: cause}, cause)
 }
 
-func TestConfiguredClientRecoversStoredCredentialsAndKeepsThemInMemory(t *testing.T) {
+func TestConfiguredClientRefreshesStoredCredentials(t *testing.T) {
+	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
 		assert.NoError(t, request.ParseForm())
-		assert.Equal(t, "stored-login", request.Form.Get("login"))
-		assert.Equal(t, "stored-key", request.Form.Get("passwd"))
+		assert.Equal(t, "updated-login", request.Form.Get("login"))
+		assert.Equal(t, "updated-key", request.Form.Get("passwd"))
 		_, _ = io.WriteString(response, `{"status":"success","answer":{"ok":true}}`)
 	}))
 	defer server.Close()
@@ -301,10 +303,93 @@ func TestConfiguredClientRecoversStoredCredentialsAndKeepsThemInMemory(t *testin
 	assert.Equal(t, "persistent-store", status.Source)
 	assert.Equal(t, 1, store.loads)
 
-	store.err = errors.New("credential store became unavailable again")
+	store.value = credentials.Credentials{Login: "updated-login", APIKey: "updated-key"}
 	_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
 	require.NoError(t, err)
-	assert.Equal(t, 1, store.loads, "credentials must stay cached after a successful load")
+	assert.Equal(t, 2, store.loads)
+	assert.EqualValues(t, 1, requests.Load())
+
+	store.err = errors.New("credential store became unavailable again")
+	_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
+	var authenticationError *AuthenticationError
+	require.ErrorAs(t, err, &authenticationError)
+	assert.Equal(t, 3, store.loads)
+	assert.EqualValues(t, 1, requests.Load(), "a stale credential must not be sent after the store becomes unavailable")
+}
+
+func TestConfiguredClientPreservesEnvironmentOverridesDuringRefresh(t *testing.T) {
+	tests := map[string]struct {
+		configuration config.Config
+		expectedLogin string
+		expectedKey   string
+	}{
+		"login": {
+			configuration: config.Config{
+				BaseURL:              "https://example.invalid/api",
+				Login:                "environment-login",
+				APIKey:               "initial-stored-key",
+				CredentialSource:     "environment-and-store",
+				LoginFromEnvironment: true,
+			},
+			expectedLogin: "environment-login",
+			expectedKey:   "updated-stored-key",
+		},
+		"API key": {
+			configuration: config.Config{
+				BaseURL:               "https://example.invalid/api",
+				Login:                 "initial-stored-login",
+				APIKey:                "environment-key",
+				CredentialSource:      "environment-and-store",
+				APIKeyFromEnvironment: true,
+			},
+			expectedLogin: "updated-stored-login",
+			expectedKey:   "environment-key",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			store := &fakeCredentialStore{value: credentials.Credentials{Login: "updated-stored-login", APIKey: "updated-stored-key"}}
+			client, err := NewFromConfig(test.configuration, nil, store)
+			require.NoError(t, err)
+			client.http = httpClientFunc(func(request *http.Request) (*http.Response, error) {
+				require.NoError(t, request.ParseForm())
+				assert.Equal(t, test.expectedLogin, request.Form.Get("login"))
+				assert.Equal(t, test.expectedKey, request.Form.Get("passwd"))
+				body := io.NopCloser(strings.NewReader(`{"status":"success","answer":true}`))
+				return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+			})
+
+			_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
+			require.NoError(t, err)
+			assert.Equal(t, 1, store.loads)
+		})
+	}
+}
+
+func TestConfiguredClientDoesNotReloadCompleteEnvironmentCredentials(t *testing.T) {
+	configuration := config.Config{
+		BaseURL:               "https://example.invalid/api",
+		Login:                 "environment-login",
+		APIKey:                "environment-key",
+		CredentialSource:      "environment",
+		LoginFromEnvironment:  true,
+		APIKeyFromEnvironment: true,
+	}
+	store := &fakeCredentialStore{err: errors.New("credential store must not be loaded")}
+	client, err := NewFromConfig(configuration, nil, store)
+	require.NoError(t, err)
+	client.http = httpClientFunc(func(request *http.Request) (*http.Response, error) {
+		require.NoError(t, request.ParseForm())
+		assert.Equal(t, "environment-login", request.Form.Get("login"))
+		assert.Equal(t, "environment-key", request.Form.Get("passwd"))
+		body := io.NopCloser(strings.NewReader(`{"status":"success","answer":true}`))
+		return &http.Response{StatusCode: http.StatusOK, Body: body}, nil
+	})
+
+	_, err = client.Call(context.Background(), "user", "getAccountInfo", nil)
+	require.NoError(t, err)
+	assert.Zero(t, store.loads)
 }
 
 func TestAPIErrorFormatting(t *testing.T) {

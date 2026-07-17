@@ -37,6 +37,8 @@ func TestFromEnvironment(t *testing.T) {
 	assert.Equal(t, "test-only-secret", config.APIKey)
 	assert.Equal(t, "https://example.invalid/api", config.BaseURL)
 	assert.Equal(t, "environment", config.CredentialSource)
+	assert.True(t, config.LoginFromEnvironment)
+	assert.True(t, config.APIKeyFromEnvironment)
 	assert.Zero(t, store.loads)
 }
 
@@ -52,6 +54,8 @@ func TestFromSourcesUsesStoredCredentials(t *testing.T) {
 	assert.Equal(t, "stored-key", config.APIKey)
 	assert.Equal(t, defaultBaseURL, config.BaseURL)
 	assert.Equal(t, "persistent-store", config.CredentialSource)
+	assert.False(t, config.LoginFromEnvironment)
+	assert.False(t, config.APIKeyFromEnvironment)
 	assert.Equal(t, 1, store.loads)
 }
 
@@ -65,6 +69,8 @@ func TestFromSourcesUsesPartialEnvironmentOverride(t *testing.T) {
 	assert.Equal(t, "environment-account", config.Login)
 	assert.Equal(t, "stored-key", config.APIKey)
 	assert.Equal(t, "environment-and-store", config.CredentialSource)
+	assert.True(t, config.LoginFromEnvironment)
+	assert.False(t, config.APIKeyFromEnvironment)
 }
 
 func TestFromSourcesAllowsMissingCredentials(t *testing.T) {

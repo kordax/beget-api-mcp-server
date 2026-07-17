@@ -102,6 +102,7 @@ func (store *OSStore) Save(value Credentials) error {
 	if err := store.saveFile(value); err != nil {
 		return err
 	}
+	_ = store.deleteLegacyKeyring()
 	return nil
 }
 

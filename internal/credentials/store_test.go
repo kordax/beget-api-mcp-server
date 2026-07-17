@@ -75,6 +75,33 @@ func TestOSStorePersistsCredentialsAcrossProcesses(t *testing.T) {
 	require.NoError(t, secondProcess.Delete(), "deleting absent credentials must be idempotent")
 }
 
+func TestOSStoreSaveRemovesLegacyKeyringCredentials(t *testing.T) {
+	backend := newFakeKeyring()
+	backend.values[loginEntry] = "legacy-account"
+	backend.values[apiKeyEntry] = "legacy-key"
+	store, _ := newTestOSStore(t, backend)
+
+	require.NoError(t, store.Save(Credentials{Login: "current-account", APIKey: "current-key"}))
+	assert.Empty(t, backend.values)
+
+	stored, err := store.Load()
+	require.NoError(t, err)
+	assert.Equal(t, Credentials{Login: "current-account", APIKey: "current-key"}, stored)
+}
+
+func TestOSStoreSaveKeepsFileWhenLegacyCleanupFails(t *testing.T) {
+	backend := newFakeKeyring()
+	backend.values[loginEntry] = "legacy-account"
+	backend.values[apiKeyEntry] = "legacy-key"
+	backend.deleteErr[loginEntry] = errors.New("keyring unavailable")
+	store, _ := newTestOSStore(t, backend)
+
+	require.NoError(t, store.Save(Credentials{Login: "current-account", APIKey: "current-key"}))
+	stored, err := store.Load()
+	require.NoError(t, err)
+	assert.Equal(t, Credentials{Login: "current-account", APIKey: "current-key"}, stored)
+}
+
 func TestOSStoreMigratesLegacyKeyringCredentials(t *testing.T) {
 	backend := newFakeKeyring()
 	backend.values[loginEntry] = "legacy-account"

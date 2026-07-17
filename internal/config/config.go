@@ -16,12 +16,14 @@ import (
 const defaultBaseURL = "https://api.beget.com/api"
 
 type Config struct {
-	Login            string
-	APIKey           string
-	BaseURL          string
-	Timeout          time.Duration
-	CredentialSource string
-	CredentialError  error
+	Login                 string
+	APIKey                string
+	BaseURL               string
+	Timeout               time.Duration
+	CredentialSource      string
+	CredentialError       error
+	LoginFromEnvironment  bool
+	APIKeyFromEnvironment bool
 }
 
 var Module = fx.Module("config", fx.Provide(FromSources))
@@ -29,6 +31,8 @@ var Module = fx.Module("config", fx.Provide(FromSources))
 func FromSources(store credentials.Store) (Config, error) {
 	login := strings.TrimSpace(os.Getenv("BEGET_API_LOGIN"))
 	apiKey := os.Getenv("BEGET_API_KEY")
+	loginFromEnvironment := login != ""
+	apiKeyFromEnvironment := apiKey != ""
 	source := "environment"
 	var credentialError error
 	if login == "" || apiKey == "" {
@@ -42,7 +46,7 @@ func FromSources(store credentials.Store) (Config, error) {
 				if apiKey == "" {
 					apiKey = stored.APIKey
 				}
-				if os.Getenv("BEGET_API_LOGIN") != "" || os.Getenv("BEGET_API_KEY") != "" {
+				if loginFromEnvironment || apiKeyFromEnvironment {
 					source = "environment-and-store"
 				}
 			} else {
@@ -60,12 +64,14 @@ func FromSources(store credentials.Store) (Config, error) {
 	}
 	baseURL := uos.GetEnvOptAs("BEGET_API_BASE_URL", uos.MapStringToTrimmed).OrElse(defaultBaseURL)
 	config := Config{
-		Login:            login,
-		APIKey:           apiKey,
-		BaseURL:          strings.TrimRight(baseURL, "/"),
-		Timeout:          30 * time.Second,
-		CredentialSource: source,
-		CredentialError:  credentialError,
+		Login:                 login,
+		APIKey:                apiKey,
+		BaseURL:               strings.TrimRight(baseURL, "/"),
+		Timeout:               30 * time.Second,
+		CredentialSource:      source,
+		CredentialError:       credentialError,
+		LoginFromEnvironment:  loginFromEnvironment,
+		APIKeyFromEnvironment: apiKeyFromEnvironment,
 	}
 	return config, nil
 }

@@ -36,14 +36,16 @@ type Caller interface {
 }
 
 type Client struct {
-	baseURL         string
-	http            HTTPClient
-	credentialMu    sync.RWMutex
-	login           string
-	apiKey          string
-	source          string
-	authErr         error
-	credentialStore credentials.Store
+	baseURL               string
+	http                  HTTPClient
+	credentialMu          sync.Mutex
+	login                 string
+	apiKey                string
+	source                string
+	authErr               error
+	credentialStore       credentials.Store
+	loginFromEnvironment  bool
+	apiKeyFromEnvironment bool
 }
 
 type AuthenticationStatus struct {
@@ -160,13 +162,15 @@ func NewFromConfig(configuration config.Config, httpClient *http.Client, store c
 		httpClient = http.DefaultClient
 	}
 	return &Client{
-		baseURL:         baseURL,
-		login:           configuration.Login,
-		apiKey:          configuration.APIKey,
-		http:            httpClient,
-		source:          configuration.CredentialSource,
-		authErr:         configuration.CredentialError,
-		credentialStore: store,
+		baseURL:               baseURL,
+		login:                 configuration.Login,
+		apiKey:                configuration.APIKey,
+		http:                  httpClient,
+		source:                configuration.CredentialSource,
+		authErr:               configuration.CredentialError,
+		credentialStore:       store,
+		loginFromEnvironment:  configuration.LoginFromEnvironment,
+		apiKeyFromEnvironment: configuration.APIKeyFromEnvironment,
 	}, nil
 }
 
@@ -265,40 +269,37 @@ func unwrapMethodResult(section, method string, answer json.RawMessage) (json.Ra
 }
 
 func (c *Client) credentials() (string, string, string, error) {
-	c.credentialMu.RLock()
-	if c.login != "" && c.apiKey != "" {
-		login, apiKey, source := c.login, c.apiKey, c.source
-		c.credentialMu.RUnlock()
-		return login, apiKey, source, nil
-	}
-	c.credentialMu.RUnlock()
-
 	c.credentialMu.Lock()
 	defer c.credentialMu.Unlock()
-	if c.login != "" && c.apiKey != "" || c.credentialStore == nil {
+	if c.credentialStore == nil || c.loginFromEnvironment && c.apiKeyFromEnvironment {
 		return c.login, c.apiKey, c.source, c.authErr
 	}
 
 	stored, err := c.credentialStore.Load()
+	stored.Login = strings.TrimSpace(stored.Login)
+	if err == nil && (stored.Login == "" || stored.APIKey == "") {
+		err = credentials.ErrNotFound
+	}
 	if err != nil {
+		if !c.loginFromEnvironment {
+			c.login = ""
+		}
+		if !c.apiKeyFromEnvironment {
+			c.apiKey = ""
+		}
+		c.source = "not-configured"
 		c.authErr = err
 		return c.login, c.apiKey, c.source, c.authErr
 	}
-	stored.Login = strings.TrimSpace(stored.Login)
-	if stored.Login == "" || stored.APIKey == "" {
-		c.authErr = credentials.ErrNotFound
-		return c.login, c.apiKey, c.source, c.authErr
-	}
 
-	hasEnvironmentValue := c.login != "" || c.apiKey != ""
-	if c.login == "" {
+	if !c.loginFromEnvironment {
 		c.login = stored.Login
 	}
-	if c.apiKey == "" {
+	if !c.apiKeyFromEnvironment {
 		c.apiKey = stored.APIKey
 	}
 	c.source = "persistent-store"
-	if hasEnvironmentValue {
+	if c.loginFromEnvironment || c.apiKeyFromEnvironment {
 		c.source = "environment-and-store"
 	}
 	c.authErr = nil
