@@ -86,12 +86,14 @@ func TestCommandRejectsInvalidCredentialsBeforeSaving(t *testing.T) {
 
 	err := command.Run(t.Context(), []string{"set", "--login", "account"})
 	assert.ErrorIs(t, err, expected)
+	assert.EqualError(t, err, "Beget rejected credentials")
 	assert.False(t, store.saved)
 	assert.Equal(t, Credentials{Login: "previous-account", APIKey: "previous-key"}, store.value)
 	assert.NotContains(t, err.Error(), "invalid-key")
 
 	err = command.Run(t.Context(), []string{"check"})
 	assert.ErrorIs(t, err, expected)
+	assert.EqualError(t, err, "Beget rejected credentials")
 }
 
 func TestCommandPropagatesStoreErrors(t *testing.T) {

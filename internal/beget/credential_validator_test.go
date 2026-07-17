@@ -41,6 +41,6 @@ func TestCredentialValidatorDoesNotExposeRejectedKey(t *testing.T) {
 	validator := NewCredentialValidator(config.Config{BaseURL: server.URL}, server.Client())
 	err := validator.Validate(context.Background(), credentials.Credentials{Login: "account", APIKey: "must-not-leak"})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "check Beget authorization")
+	assert.EqualError(t, err, "Beget user/getAccountInfo failed: denied")
 	assert.NotContains(t, err.Error(), "must-not-leak")
 }

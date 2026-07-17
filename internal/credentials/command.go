@@ -52,7 +52,7 @@ func (command *Command) Run(ctx context.Context, arguments []string) error {
 			return err
 		}
 		if err := command.validator.Validate(ctx, value); err != nil {
-			return fmt.Errorf("validate stored Beget credentials: %w", err)
+			return err
 		}
 		_, err = fmt.Fprintln(command.output, "Beget credentials are valid and authorized")
 		return err
@@ -90,7 +90,7 @@ func (command *Command) set(ctx context.Context, arguments []string) error {
 	}
 	value := Credentials{Login: strings.TrimSpace(*login), APIKey: apiKey}
 	if err := command.validator.Validate(ctx, value); err != nil {
-		return fmt.Errorf("validate Beget credentials: %w", err)
+		return err
 	}
 	if err := command.store.Save(value); err != nil {
 		return err

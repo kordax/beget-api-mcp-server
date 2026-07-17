@@ -35,7 +35,7 @@ func (validator *credentialValidator) Validate(ctx context.Context, value creden
 		return fmt.Errorf("prepare Beget authorization check: %w", err)
 	}
 	if _, err := client.Call(ctx, "user", "getAccountInfo", nil); err != nil {
-		return fmt.Errorf("check Beget authorization: %w", err)
+		return err
 	}
 	return nil
 }
