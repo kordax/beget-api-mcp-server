@@ -29,12 +29,6 @@ func (input Confirmation) dryRun() bool {
 	return input.DryRun
 }
 
-type ToggleSSHInput struct {
-	Confirmation
-	Status   int    `json:"status" jsonschema:"SSH state: 1 enables access and 0 disables access"`
-	FTPLogin string `json:"ftplogin,omitempty" jsonschema:"optional full FTP login from beget_list_ftp_accounts; omit for the main account"`
-}
-
 type BackupFileListInput struct {
 	BackupID int64  `json:"backup_id,omitempty" jsonschema:"optional backup identifier from beget_list_file_backups; omit for the current copy"`
 	Path     string `json:"path" jsonschema:"absolute path from the hosting home directory, for example /example.com/public_html"`

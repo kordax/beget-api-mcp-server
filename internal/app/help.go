@@ -43,7 +43,7 @@ Usage:
   beget-api-mcp-server credentials delete
 
 Commands:
-  set     Validate and save the login and an API key read from a hidden prompt
+  set     Check and save the login and an API key read from a hidden prompt
   check   Validate stored credentials with Beget without displaying them
   delete  Remove stored credentials
 
@@ -58,8 +58,9 @@ Usage:
 Options:
   --login <login>  Beget hosting account login (required)
 
-The API key is read from a hidden terminal prompt or stdin. It is validated with
-a read-only Beget API call before saving and is never accepted as an argument.
+The API key is read from a hidden terminal prompt or stdin and is never accepted
+as an argument. The server checks it with a read-only account information call.
+Enable the account management API permission for a conclusive result.
 `
 
 const upgradeHelp = `Check for updates or install a release.

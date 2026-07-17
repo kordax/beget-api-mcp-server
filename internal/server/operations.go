@@ -306,11 +306,6 @@ var operationCatalog = []operationSpec{
 		"Read the hosting plan, server details, quotas, and current account usage. Use this before changes that may exceed account limits.",
 		"user", "getAccountInfo",
 	),
-	mutationOperation[ToggleSSHInput, []struct{}](
-		"beget_toggle_ssh",
-		"Enable or disable SSH for the main account or an optional FTP login from beget_list_ftp_accounts. Read the current account first and verify access separately. Requires explicit confirm=true after user approval.",
-		"user", "toggleSsh", true, true,
-	),
 	readOperation[NoArgs, []Backup]("beget_list_file_backups", "List file backup identifiers available for file listing, restore, or download operations.", "backup", "getFileBackupList"),
 	readOperation[NoArgs, []Backup]("beget_list_mysql_backups", "List MySQL backup identifiers available for database listing, restore, or download operations.", "backup", "getMysqlBackupList"),
 	readOperation[BackupFileListInput, []BackupFile]("beget_list_backup_files", "List files and directories at path in a file backup. Get backup_id from beget_list_file_backups or omit it for the current copy.", "backup", "getFileList"),

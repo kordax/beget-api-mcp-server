@@ -90,3 +90,34 @@ codex mcp list
 Start a new Codex session and use `/mcp` to verify the connection. The installer has already added the `beget-api` skill, which teaches Codex the safe workflow.
 
 You can now ask, for example, “Check whether Beget authorization is configured” or “List my sites and their domains.” Before a hosting change, the agent must read the current state, describe the exact change, and ask for explicit confirmation.
+
+## 5. Common issues
+
+### Credentials cannot be verified
+
+`credentials set` and `credentials check` verify the login and API password with a single `user/getAccountInfo` request, which only reads account information. The minimum Beget control panel configuration is:
+
+- Hosting API is enabled;
+- a separate API password is set;
+- the `Account management` permission is enabled.
+
+No other permissions are required to verify credentials. The MCP server exposes no SSH tools and never calls `user/toggleSsh`: the account section only provides the read-only `getAccountInfo` method.
+
+When the `Account management` permission is disabled, Beget may return the same `AUTH_ERROR` as it does for an incorrect login or API password. In that case, `credentials set` saves the credentials as unverified and `credentials check` reports the ambiguous result.
+
+### Beget returns `Method disabled`
+
+Enable only the permission for the tools you intend to use:
+
+| MCP tools | Beget API permission |
+| --- | --- |
+| Account information and credential verification | `Account management` |
+| Backups and files inside them | `Backup management` |
+| Cron tasks | `Cron management` |
+| DNS records | `DNS management` |
+| FTP accounts | `FTP management` |
+| MySQL databases | `MySQL management` |
+| Sites | `Site management` |
+| Domains | `Domain management` |
+| Mail | `Mail management` |
+| Site and database load | `Statistics` |

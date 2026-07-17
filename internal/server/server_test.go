@@ -60,8 +60,6 @@ func fakeAnswer(section, method string) json.RawMessage {
 		return json.RawMessage(`{"row_number":1}`)
 	case "cron/edit", "cron/changeHiddenState", "domain/addVirtual", "domain/addSubdomainVirtual":
 		return json.RawMessage(`1`)
-	case "user/toggleSsh":
-		return json.RawMessage(`[]`)
 	case "backup/getFileBackupList", "backup/getMysqlBackupList", "backup/getFileList", "backup/getMysqlList", "backup/getLog",
 		"cron/getList", "ftp/getList", "mysql/getList", "site/getList", "domain/getList", "domain/getSubdomainList", "domain/getDirectives",
 		"mail/getMailboxList", "mail/forwardListShow", "stat/getSitesListLoad", "stat/getDbListLoad":
@@ -113,7 +111,8 @@ func TestToolsExposeSafetyAnnotations(t *testing.T) {
 	for _, tool := range result.Tools {
 		tools[tool.Name] = tool
 	}
-	assert.Len(t, tools, 68)
+	assert.Len(t, tools, 67)
+	assert.NotContains(t, tools, "beget_toggle_ssh")
 	require.Contains(t, tools, "beget_auth_status")
 	require.Contains(t, tools, "beget_server_capabilities")
 	require.Contains(t, tools, "beget_validate_mailbox_password")
@@ -244,10 +243,10 @@ func TestToolContractSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	encoded, err := json.Marshal(result.Tools)
 	require.NoError(t, err)
-	assert.Len(t, result.Tools, 68)
+	assert.Len(t, result.Tools, 67)
 	assert.LessOrEqual(t, len(encoded), 172000, "typed contracts must remain compact after adding explicit safety guidance")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "5de1cf38b1a96de2f56aaef5d9f8d3533a9e7e29969a3ab0d5cfc2bb9c4309b2", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "560805bd65630572627ef30ee95ef01024bc3f571e3dc6fd67d6e765162ad49e", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
@@ -320,7 +319,21 @@ func TestOperationCatalogLinksOfficialDocumentationAndDoesNotHideMutations(t *te
 			assert.NotRegexp(t, `^beget_(get|list|is)_`, operation.name, "a mutation must not look read-only")
 		}
 	}
-	assert.Len(t, seenNames, 68)
+	assert.Len(t, seenNames, 67)
+}
+
+func TestAccountSectionOnlyReadsAccountInfo(t *testing.T) {
+	var accountOperations []operationSpec
+	for _, operation := range operationCatalog {
+		if operation.section == "user" {
+			accountOperations = append(accountOperations, operation)
+		}
+	}
+
+	require.Len(t, accountOperations, 1)
+	assert.Equal(t, "beget_account_info", accountOperations[0].name)
+	assert.Equal(t, "getAccountInfo", accountOperations[0].method)
+	assert.False(t, accountOperations[0].mutating)
 }
 
 func TestOperationCatalogSnapshot(t *testing.T) {
@@ -339,7 +352,7 @@ func TestOperationCatalogSnapshot(t *testing.T) {
 	encoded, err := json.Marshal(contracts)
 	require.NoError(t, err)
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "a2940c45fcd15d70da5f0d09da4c7b3b198bc8cf74b65cc648c58ebbec2ebd42", actual, "intentional operation catalog changes require updating this snapshot")
+	assert.Equal(t, "285a8e77d4ccb6baa6fa9bd145e6b48efd803f6f82bea507b1e688d9fb8b1f2d", actual, "intentional operation catalog changes require updating this snapshot")
 }
 
 func TestToolsExposeTypedOutputContracts(t *testing.T) {
@@ -469,7 +482,6 @@ func TestInvalidContractsDoNotReachBeget(t *testing.T) {
 
 	for _, call := range []*mcp.CallToolParams{
 		{Name: "beget_account_info", Arguments: map[string]any{"domain": "example.com"}},
-		{Name: "beget_toggle_ssh", Arguments: map[string]any{"status": 2, "confirm": true}},
 		{Name: "beget_add_cron_job", Arguments: map[string]any{"confirm": true}},
 		{Name: "beget_add_cron_job", Arguments: map[string]any{
 			"minutes": "99", "hours": "*", "days": "*", "months": "*", "weekdays": "*", "command": "true", "confirm": true,
@@ -618,7 +630,7 @@ func TestServerCapabilitiesAreLocalTypedAndCredentialIndependent(t *testing.T) {
 	assert.Equal(t, buildinfo.Version, capabilities["server_version"])
 	assert.Equal(t, true, capabilities["has_mutations"])
 	methods := capabilities["supported_beget_methods"].([]any)
-	assert.Len(t, methods, 65)
+	assert.Len(t, methods, 64)
 	methodIndex := 0
 	for _, operation := range operationCatalog {
 		if operation.section == "local" {
@@ -1260,7 +1272,6 @@ func validOperationArguments() map[string]map[string]any {
 		"beget_validate_mailbox_password":    {"mailbox_password": "Strong1!"},
 		"beget_get_dns_records":              {"fqdn": "example.com"},
 		"beget_change_dns_records":           withConfirm(map[string]any{"fqdn": "example.com", "records": map[string]any{"A": []map[string]any{{"priority": 0, "value": "192.0.2.1"}}}}),
-		"beget_toggle_ssh":                   withConfirm(map[string]any{"status": 1, "ftplogin": "user_ftp"}),
 		"beget_list_backup_files":            {"backup_id": 1, "path": "/example.com/public_html"},
 		"beget_list_backup_databases":        {"backup_id": 1},
 		"beget_restore_file_backup":          withConfirm(map[string]any{"backup_id": 1, "paths": []string{"/example.com/public_html"}}),

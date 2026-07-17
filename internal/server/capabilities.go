@@ -41,7 +41,7 @@ var capabilitySections = map[string]capabilitySection{
 	},
 	"user": {
 		name:          "account",
-		scenario:      "Inspect plan limits and account usage, or change SSH availability.",
+		scenario:      "Inspect hosting plan limits, server details, quotas, and current account usage.",
 		documentation: "https://beget.com/ru/kb/api/funkczii-upravleniya-akkauntom",
 	},
 	"backup": {
