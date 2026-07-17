@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/kordax/beget-api-mcp-server/internal/beget"
+	"github.com/kordax/beget-api-mcp-server/internal/config"
 	"github.com/kordax/beget-api-mcp-server/internal/credentials"
 	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"go.uber.org/dig"
@@ -23,6 +25,8 @@ func Run(arguments []string, output, errorOutput io.Writer) int {
 		var command *credentials.Command
 		application := fx.New(
 			credentials.Module,
+			config.Module,
+			beget.CredentialValidationModule,
 			fx.Provide(credentials.NewCommand),
 			fx.Populate(&command),
 			fx.NopLogger,
@@ -31,7 +35,7 @@ func Run(arguments []string, output, errorOutput io.Writer) int {
 			_, _ = fmt.Fprintf(errorOutput, "initialize credentials command: %v\n", err)
 			return 1
 		}
-		if err := command.Run(arguments[1:]); err != nil {
+		if err := command.Run(context.Background(), arguments[1:]); err != nil {
 			_, _ = fmt.Fprintf(errorOutput, "%v\n", err)
 			return 1
 		}

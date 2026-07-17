@@ -17,7 +17,7 @@ Usage:
   beget-api-mcp-server help [command]
 
 Commands:
-  credentials  Save, check, or delete Beget credentials
+  credentials  Validate, save, check, or delete Beget credentials
   upgrade      Check for updates or install a release
   help         Show help for a command
 
@@ -43,8 +43,8 @@ Usage:
   beget-api-mcp-server credentials delete
 
 Commands:
-  set     Save the login and an API key read from a hidden prompt or stdin
-  check   Verify that credentials are configured without displaying them
+  set     Validate and save the login and an API key read from a hidden prompt
+  check   Validate stored credentials with Beget without displaying them
   delete  Remove stored credentials
 
 Run "beget-api-mcp-server help credentials set" for set options.
@@ -58,8 +58,8 @@ Usage:
 Options:
   --login <login>  Beget hosting account login (required)
 
-The API key is read from a hidden terminal prompt or stdin. It is never accepted
-as a command-line argument.
+The API key is read from a hidden terminal prompt or stdin. It is validated with
+a read-only Beget API call before saving and is never accepted as an argument.
 `
 
 const upgradeHelp = `Check for updates or install a release.

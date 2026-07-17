@@ -65,8 +65,8 @@ func (e *AuthenticationError) Error() string {
 func (e *AuthenticationError) Unwrap() error { return e.Cause }
 
 var Module = fx.Module("beget",
+	CredentialValidationModule,
 	fx.Provide(
-		NewHTTPClient,
 		fx.Annotate(NewFromConfig, fx.As(new(Caller))),
 	),
 )

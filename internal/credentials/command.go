@@ -5,6 +5,7 @@ package credentials
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,36 +16,45 @@ import (
 	"golang.org/x/term"
 )
 
+type Validator interface {
+	Validate(context.Context, Credentials) error
+}
+
 type Command struct {
 	store       Store
+	validator   Validator
 	input       *os.File
 	output      io.Writer
 	errorOutput io.Writer
 }
 
-func NewCommand(store Store) *Command {
-	return &Command{store: store, input: os.Stdin, output: os.Stdout, errorOutput: os.Stderr}
+func NewCommand(store Store, validator Validator) *Command {
+	return &Command{store: store, validator: validator, input: os.Stdin, output: os.Stdout, errorOutput: os.Stderr}
 }
 
 func IsCommand(arguments []string) bool {
 	return len(arguments) > 0 && arguments[0] == "credentials"
 }
 
-func (command *Command) Run(arguments []string) error {
+func (command *Command) Run(ctx context.Context, arguments []string) error {
 	if len(arguments) == 0 {
 		return errors.New("credentials command requires set, check, or delete")
 	}
 	switch arguments[0] {
 	case "set":
-		return command.set(arguments[1:])
+		return command.set(ctx, arguments[1:])
 	case "check":
 		if len(arguments) != 1 {
 			return errors.New("credentials check does not accept arguments")
 		}
-		if _, err := command.store.Load(); err != nil {
+		value, err := command.store.Load()
+		if err != nil {
 			return err
 		}
-		_, err := fmt.Fprintln(command.output, "Beget credentials are configured in the persistent credential store")
+		if err := command.validator.Validate(ctx, value); err != nil {
+			return fmt.Errorf("validate stored Beget credentials: %w", err)
+		}
+		_, err = fmt.Fprintln(command.output, "Beget credentials are valid and authorized")
 		return err
 	case "delete":
 		if len(arguments) != 1 {
@@ -60,7 +70,7 @@ func (command *Command) Run(arguments []string) error {
 	}
 }
 
-func (command *Command) set(arguments []string) error {
+func (command *Command) set(ctx context.Context, arguments []string) error {
 	flags := flag.NewFlagSet("credentials set", flag.ContinueOnError)
 	flags.SetOutput(command.errorOutput)
 	login := flags.String("login", "", "Beget hosting account login")
@@ -78,10 +88,14 @@ func (command *Command) set(arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if err := command.store.Save(Credentials{Login: *login, APIKey: apiKey}); err != nil {
+	value := Credentials{Login: strings.TrimSpace(*login), APIKey: apiKey}
+	if err := command.validator.Validate(ctx, value); err != nil {
+		return fmt.Errorf("validate Beget credentials: %w", err)
+	}
+	if err := command.store.Save(value); err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(command.output, "Beget credentials were saved in the persistent credential store")
+	_, err = fmt.Fprintln(command.output, "Beget credentials were validated and saved in the persistent credential store")
 	return err
 }
 
