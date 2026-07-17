@@ -6,6 +6,8 @@
 
 A small local MCP server for managing Beget hosting from GoLand, Codex, and other MCP clients. It exposes typed tools, and every hosting change requires explicit user confirmation.
 
+It is useful when you need to edit DNS settings, analyze records, work with files, or handle other tasks through an agent.
+
 ## 1. Requirements
 
 - A Beget hosting account with Hosting API enabled and a separate API password.
