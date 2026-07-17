@@ -20,10 +20,7 @@ type Validator interface {
 	Validate(context.Context, Credentials) error
 }
 
-var (
-	ErrInvalidCredentials        = errors.New("invalid Beget login or API password")
-	ErrAccountInfoAccessDisabled = errors.New("account information access is disabled in Beget API settings")
-)
+var ErrCredentialsUnverified = errors.New("cannot verify Beget credentials: account information access is disabled or login/API password is invalid")
 
 type Command struct {
 	store       Store
@@ -57,14 +54,10 @@ func (command *Command) Run(ctx context.Context, arguments []string) error {
 			return err
 		}
 		validationErr := command.validator.Validate(ctx, value)
-		if validationErr != nil && !errors.Is(validationErr, ErrAccountInfoAccessDisabled) {
+		if validationErr != nil {
 			return validationErr
 		}
-		message := "Beget credentials are valid and authorized"
-		if errors.Is(validationErr, ErrAccountInfoAccessDisabled) {
-			message = "Beget credentials are valid; account information access is disabled"
-		}
-		_, err = fmt.Fprintln(command.output, message)
+		_, err = fmt.Fprintln(command.output, "Beget credentials are valid and authorized")
 		return err
 	case "delete":
 		if len(arguments) != 1 {
@@ -100,15 +93,15 @@ func (command *Command) set(ctx context.Context, arguments []string) error {
 	}
 	value := Credentials{Login: strings.TrimSpace(*login), APIKey: apiKey}
 	validationErr := command.validator.Validate(ctx, value)
-	if validationErr != nil && !errors.Is(validationErr, ErrAccountInfoAccessDisabled) {
+	if validationErr != nil && !errors.Is(validationErr, ErrCredentialsUnverified) {
 		return validationErr
 	}
 	if err := command.store.Save(value); err != nil {
 		return err
 	}
 	message := "Beget credentials were validated and saved in the persistent credential store"
-	if errors.Is(validationErr, ErrAccountInfoAccessDisabled) {
-		message = "Beget credentials were saved; account information access is disabled"
+	if errors.Is(validationErr, ErrCredentialsUnverified) {
+		message = "Beget credentials were saved but not verified; account information access is disabled or login/API password is invalid"
 	}
 	_, err = fmt.Fprintln(command.output, message)
 	return err

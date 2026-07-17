@@ -96,19 +96,20 @@ func TestCommandRejectsInvalidCredentialsBeforeSaving(t *testing.T) {
 	assert.EqualError(t, err, "Beget rejected credentials")
 }
 
-func TestCommandAcceptsDisabledAccountInfoAccess(t *testing.T) {
+func TestCommandSavesUnverifiedCredentials(t *testing.T) {
 	store := &fakeStore{}
 	command := newTestCommand(t, store, "test-only-secret\n")
-	command.validator = &fakeValidator{err: ErrAccountInfoAccessDisabled}
+	command.validator = &fakeValidator{err: ErrCredentialsUnverified}
 
 	require.NoError(t, command.Run(t.Context(), []string{"set", "--login", "account"}))
 	assert.True(t, store.saved)
-	assert.Contains(t, command.output.(*bytes.Buffer).String(), "account information access is disabled")
+	assert.Contains(t, command.output.(*bytes.Buffer).String(), "saved but not verified")
 
 	command.output.(*bytes.Buffer).Reset()
-	require.NoError(t, command.Run(t.Context(), []string{"check"}))
-	assert.Contains(t, command.output.(*bytes.Buffer).String(), "credentials are valid")
-	assert.Contains(t, command.output.(*bytes.Buffer).String(), "account information access is disabled")
+	err := command.Run(t.Context(), []string{"check"})
+	assert.ErrorIs(t, err, ErrCredentialsUnverified)
+	assert.EqualError(t, err, "cannot verify Beget credentials: account information access is disabled or login/API password is invalid")
+	assert.Empty(t, command.output.(*bytes.Buffer).String())
 }
 
 func TestCommandPropagatesStoreErrors(t *testing.T) {

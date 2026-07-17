@@ -40,8 +40,8 @@ func TestCredentialValidatorDoesNotExposeRejectedKey(t *testing.T) {
 
 	validator := NewCredentialValidator(config.Config{BaseURL: server.URL}, server.Client())
 	err := validator.Validate(context.Background(), credentials.Credentials{Login: "account", APIKey: "must-not-leak"})
-	assert.ErrorIs(t, err, credentials.ErrInvalidCredentials)
-	assert.EqualError(t, err, "invalid Beget login or API password")
+	assert.ErrorIs(t, err, credentials.ErrCredentialsUnverified)
+	assert.EqualError(t, err, "cannot verify Beget credentials: account information access is disabled or login/API password is invalid")
 	assert.NotContains(t, err.Error(), "must-not-leak")
 }
 
@@ -54,6 +54,6 @@ func TestCredentialValidatorAcceptsDisabledAccountInfoAccess(t *testing.T) {
 	validator := NewCredentialValidator(config.Config{BaseURL: server.URL}, server.Client())
 	err := validator.Validate(context.Background(), credentials.Credentials{Login: "account", APIKey: "test-only-key"})
 
-	assert.ErrorIs(t, err, credentials.ErrAccountInfoAccessDisabled)
-	assert.EqualError(t, err, "account information access is disabled in Beget API settings")
+	assert.ErrorIs(t, err, credentials.ErrCredentialsUnverified)
+	assert.EqualError(t, err, "cannot verify Beget credentials: account information access is disabled or login/API password is invalid")
 }

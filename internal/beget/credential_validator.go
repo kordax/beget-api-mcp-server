@@ -41,9 +41,9 @@ func (validator *credentialValidator) Validate(ctx context.Context, value creden
 		if errors.As(err, &apiError) {
 			switch {
 			case fmt.Sprint(apiError.Code) == "AUTH_ERROR":
-				return credentials.ErrInvalidCredentials
+				return credentials.ErrCredentialsUnverified
 			case strings.EqualFold(strings.TrimSpace(apiError.Message), "Method disabled"):
-				return credentials.ErrAccountInfoAccessDisabled
+				return credentials.ErrCredentialsUnverified
 			}
 		}
 		return err
