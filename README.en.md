@@ -109,15 +109,17 @@ When the `Account management` permission is disabled, Beget may return the same 
 
 Enable only the permission for the tools you intend to use:
 
+![Beget API allowed method checkboxes](docs/images/beget-api-permissions-en.png)
+
 | MCP tools | Beget API permission |
 | --- | --- |
-| Account information and credential verification | `Account management` |
-| Backups and files inside them | `Backup management` |
-| Cron tasks | `Cron management` |
-| DNS records | `DNS management` |
-| FTP accounts | `FTP management` |
-| MySQL databases | `MySQL management` |
-| Sites | `Site management` |
-| Domains | `Domain management` |
-| Mail | `Mail management` |
-| Site and database load | `Statistics` |
+| Account information and credential verification | `Account administration` |
+| Backups and files inside them | `Backup administration` |
+| Cron tasks | `Cron administration` |
+| DNS records | `DNS administration` |
+| FTP accounts | `FTP administration` |
+| MySQL databases | `MySQL administration` |
+| Sites | `Site administration` |
+| Domains | `Domain administration` |
+| Mail | `Work with mail` |
+| Site and database load | `Statistic census` |
