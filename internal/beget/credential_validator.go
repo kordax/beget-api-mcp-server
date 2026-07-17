@@ -5,8 +5,10 @@ package beget
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/kordax/beget-api-mcp-server/internal/config"
 	"github.com/kordax/beget-api-mcp-server/internal/credentials"
@@ -35,6 +37,15 @@ func (validator *credentialValidator) Validate(ctx context.Context, value creden
 		return fmt.Errorf("prepare Beget authorization check: %w", err)
 	}
 	if _, err := client.Call(ctx, "user", "getAccountInfo", nil); err != nil {
+		var apiError *APIError
+		if errors.As(err, &apiError) {
+			switch {
+			case fmt.Sprint(apiError.Code) == "AUTH_ERROR":
+				return credentials.ErrInvalidCredentials
+			case strings.EqualFold(strings.TrimSpace(apiError.Message), "Method disabled"):
+				return credentials.ErrAccountInfoAccessDisabled
+			}
+		}
 		return err
 	}
 	return nil

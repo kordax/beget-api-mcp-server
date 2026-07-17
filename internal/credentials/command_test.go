@@ -96,6 +96,21 @@ func TestCommandRejectsInvalidCredentialsBeforeSaving(t *testing.T) {
 	assert.EqualError(t, err, "Beget rejected credentials")
 }
 
+func TestCommandAcceptsDisabledAccountInfoAccess(t *testing.T) {
+	store := &fakeStore{}
+	command := newTestCommand(t, store, "test-only-secret\n")
+	command.validator = &fakeValidator{err: ErrAccountInfoAccessDisabled}
+
+	require.NoError(t, command.Run(t.Context(), []string{"set", "--login", "account"}))
+	assert.True(t, store.saved)
+	assert.Contains(t, command.output.(*bytes.Buffer).String(), "account information access is disabled")
+
+	command.output.(*bytes.Buffer).Reset()
+	require.NoError(t, command.Run(t.Context(), []string{"check"}))
+	assert.Contains(t, command.output.(*bytes.Buffer).String(), "credentials are valid")
+	assert.Contains(t, command.output.(*bytes.Buffer).String(), "account information access is disabled")
+}
+
 func TestCommandPropagatesStoreErrors(t *testing.T) {
 	expected := errors.New("store failed")
 
