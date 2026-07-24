@@ -26,10 +26,28 @@ const (
 	ModeSSE            Mode = "sse"
 )
 
+var toolSectionByName = map[string]string{
+	"account":    "user",
+	"backup":     "backup",
+	"cron":       "cron",
+	"dns":        "dns",
+	"ftp":        "ftp",
+	"mysql":      "mysql",
+	"site":       "site",
+	"domain":     "domain",
+	"mail":       "mail",
+	"statistics": "stat",
+}
+
+var toolSectionNames = []string{
+	"account", "backup", "cron", "dns", "ftp", "mysql", "site", "domain", "mail", "statistics",
+}
+
 type Arguments []string
 
 type Options struct {
 	Mode                Mode
+	ToolSections        []string
 	HTTPAddress         string
 	HTTPPath            string
 	HTTPBearerToken     string
@@ -57,6 +75,7 @@ func ParseOptions(arguments Arguments) (Options, error) {
 	stdio := flags.Bool("stdio", false, "use the stdio MCP transport")
 	streamableHTTP := flags.Bool("streamable-http", false, "use the Streamable HTTP MCP transport")
 	sse := flags.Bool("sse", false, "use the legacy SSE MCP transport")
+	toolSections := flags.String("tool-sections", "all", "comma-separated Beget tool sections")
 	httpAddress := flags.String("http-address", "127.0.0.1:8080", "loopback address for HTTP transports")
 	httpPath := flags.String("http-path", "", "HTTP endpoint path; defaults to /mcp or /sse")
 	httpAuth := flags.Bool("http-auth", false, "require a bearer token from BEGET_MCP_HTTP_TOKEN")
@@ -69,6 +88,10 @@ func ParseOptions(arguments Arguments) (Options, error) {
 	}
 	if flags.NArg() != 0 {
 		return Options{}, fmt.Errorf("unexpected positional arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	selectedToolSections, err := parseToolSections(*toolSections)
+	if err != nil {
+		return Options{}, err
 	}
 	visited := make(map[string]bool)
 	flags.Visit(func(current *flag.Flag) { visited[current.Name] = true })
@@ -129,6 +152,7 @@ func ParseOptions(arguments Arguments) (Options, error) {
 
 	return Options{
 		Mode:                mode,
+		ToolSections:        selectedToolSections,
 		HTTPAddress:         *httpAddress,
 		HTTPPath:            endpointPath,
 		HTTPBearerToken:     httpBearerToken,
@@ -136,6 +160,41 @@ func ParseOptions(arguments Arguments) (Options, error) {
 		JSONResponse:        *jsonResponse,
 		StreamableStateless: *stateless,
 	}, nil
+}
+
+func parseToolSections(value string) ([]string, error) {
+	value = strings.TrimSpace(value)
+	if strings.EqualFold(value, "all") {
+		return nil, nil
+	}
+	if value == "" {
+		return nil, errors.New("tool sections cannot be empty; use all or a comma-separated section list")
+	}
+
+	sections := make([]string, 0, len(toolSectionNames))
+	seen := make(map[string]struct{}, len(toolSectionNames))
+	for _, item := range strings.Split(value, ",") {
+		name := strings.ToLower(strings.TrimSpace(item))
+		if name == "" {
+			return nil, errors.New("tool sections cannot contain an empty value")
+		}
+		if name == "all" {
+			return nil, errors.New(`tool section "all" cannot be combined with individual sections`)
+		}
+		section, exists := toolSectionByName[name]
+		if !exists {
+			return nil, fmt.Errorf(
+				"unknown tool section %q; choose all or one of: %s",
+				name, strings.Join(toolSectionNames, ", "),
+			)
+		}
+		if _, exists := seen[section]; exists {
+			continue
+		}
+		seen[section] = struct{}{}
+		sections = append(sections, section)
+	}
+	return sections, nil
 }
 
 func validateHTTPAddress(address string) error {

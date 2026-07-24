@@ -94,12 +94,23 @@ var capabilitySections = map[string]capabilitySection{
 var encodedCapabilityCatalog = mustCapabilityCatalogJSON()
 
 func addCapabilitiesResource(server *mcp.Server) {
-	content := encodedCapabilityCatalog
+	addCapabilitiesResourceWithContent(server, encodedCapabilityCatalog)
+}
+
+func addCapabilitiesResourceFor(server *mcp.Server, operations []operationSpec) {
+	if len(operations) == len(operationCatalog) {
+		addCapabilitiesResource(server)
+		return
+	}
+	addCapabilitiesResourceWithContent(server, mustCapabilityCatalogJSONFor(operations))
+}
+
+func addCapabilitiesResourceWithContent(server *mcp.Server, content string) {
 	server.AddResource(&mcp.Resource{
 		URI:         capabilitiesResourceURI,
 		Name:        "beget_capabilities",
 		Title:       "Beget tool routing catalog",
-		Description: "Optional local routing aid. Read it only when tools/list does not make the correct category clear; reading it never calls Beget.",
+		Description: "Optional local routing aid for the enabled tools. Read it only when tools/list does not make the correct category clear; reading it never calls Beget.",
 		MIMEType:    capabilitiesResourceMIMEType,
 		Size:        int64(len(content)),
 	}, func(_ context.Context, request *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
@@ -113,7 +124,14 @@ func addCapabilitiesResource(server *mcp.Server) {
 }
 
 func mustCapabilityCatalogJSON() string {
-	catalog := buildCapabilityCatalog()
+	return mustEncodeCapabilityCatalog(buildCapabilityCatalog())
+}
+
+func mustCapabilityCatalogJSONFor(operations []operationSpec) string {
+	return mustEncodeCapabilityCatalog(buildCapabilityCatalogFor(operations))
+}
+
+func mustEncodeCapabilityCatalog(catalog capabilityCatalog) string {
 	encoded, err := json.Marshal(catalog)
 	if err != nil {
 		panic(fmt.Errorf("encode capability catalog: %w", err))
@@ -122,12 +140,16 @@ func mustCapabilityCatalogJSON() string {
 }
 
 func buildCapabilityCatalog() capabilityCatalog {
+	return buildCapabilityCatalogFor(operationCatalog)
+}
+
+func buildCapabilityCatalogFor(operations []operationSpec) capabilityCatalog {
 	catalog := capabilityCatalog{
 		Version: 1,
-		Usage:   "Optional routing aid. Read only when tool selection remains unclear after tools/list. It makes no Beget request; initialize instructions and tool schemas remain authoritative.",
+		Usage:   "Optional routing aid for the enabled tools. Read only when tool selection remains unclear after tools/list. It makes no Beget request; initialize instructions and tool schemas remain authoritative.",
 	}
 	categoryBySection := make(map[string]int, len(capabilitySections))
-	for _, operation := range operationCatalog {
+	for _, operation := range operations {
 		index, exists := categoryBySection[operation.section]
 		if !exists {
 			section, ok := capabilitySections[operation.section]

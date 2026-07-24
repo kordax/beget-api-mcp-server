@@ -14,6 +14,7 @@ import (
 
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
 	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
+	"github.com/kordax/beget-api-mcp-server/internal/transport"
 	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/fx"
@@ -87,22 +88,50 @@ type updateMonitor struct {
 	notice      string
 }
 
-var Module = fx.Module("mcp", fx.Provide(New))
+var Module = fx.Module("mcp", fx.Provide(newConfiguredServer))
 
 func New(client beget.Caller, checker *updater.Updater) *mcp.Server {
 	return newServer(client, checker, time.Now)
 }
 
+func newConfiguredServer(client beget.Caller, checker *updater.Updater, options transport.Options) *mcp.Server {
+	return newServerWithOperations(client, checker, time.Now, selectOperations(options.ToolSections))
+}
+
 func newServer(client beget.Caller, checker releaseChecker, now func() time.Time) *mcp.Server {
-	service := &service{client: client, operations: operationCatalog}
+	return newServerWithOperations(client, checker, now, operationCatalog)
+}
+
+func newServerWithOperations(client beget.Caller, checker releaseChecker, now func() time.Time, operations []operationSpec) *mcp.Server {
+	service := &service{client: client, operations: operations}
 	server := mcp.NewServer(&mcp.Implementation{Name: "beget-api-mcp-server", Version: buildinfo.Version}, &mcp.ServerOptions{
 		Instructions: serverInstructions,
 	})
 	monitor := &updateMonitor{checker: checker, now: now, lastCommand: now()}
 	server.AddReceivingMiddleware(redactSensitiveToolErrors, monitor.middleware)
-	addCapabilitiesResource(server)
+	addCapabilitiesResourceFor(server, operations)
 	service.addOperations(server)
 	return server
+}
+
+func selectOperations(enabledSections []string) []operationSpec {
+	if len(enabledSections) == 0 {
+		return operationCatalog
+	}
+
+	enabled := make(map[string]struct{}, len(enabledSections))
+	for _, section := range enabledSections {
+		enabled[section] = struct{}{}
+	}
+
+	operations := make([]operationSpec, 0, len(operationCatalog))
+	for _, operation := range operationCatalog {
+		_, sectionEnabled := enabled[operation.section]
+		if operation.section == "local" || sectionEnabled {
+			operations = append(operations, operation)
+		}
+	}
+	return operations
 }
 
 func (monitor *updateMonitor) middleware(next mcp.MethodHandler) mcp.MethodHandler {

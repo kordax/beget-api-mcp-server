@@ -18,6 +18,7 @@ import (
 	"github.com/kordax/beget-api-mcp-server/internal/beget"
 	"github.com/kordax/beget-api-mcp-server/internal/buildinfo"
 	"github.com/kordax/beget-api-mcp-server/internal/passwordpolicy"
+	"github.com/kordax/beget-api-mcp-server/internal/transport"
 	"github.com/kordax/beget-api-mcp-server/internal/updater"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/assert"
@@ -293,6 +294,55 @@ func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.
 		assert.Equal(t, operation.mutating, mutating, operation.name)
 	}
 	assert.Zero(t, caller.calls, "reading the local catalog must not call Beget")
+}
+
+func TestToolSectionFilterLimitsPublishedSurface(t *testing.T) {
+	caller := &fakeCaller{}
+	server := newConfiguredServer(caller, nil, transport.Options{ToolSections: []string{"dns"}})
+	session, closeSessions := connectServer(t, server)
+	defer closeSessions()
+
+	listedTools, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	toolNames := make([]string, 0, len(listedTools.Tools))
+	for _, tool := range listedTools.Tools {
+		toolNames = append(toolNames, tool.Name)
+	}
+	assert.ElementsMatch(t, []string{
+		"beget_auth_status",
+		"beget_server_capabilities",
+		"beget_validate_mailbox_password",
+		"beget_get_dns_records",
+		"beget_change_dns_records",
+	}, toolNames)
+
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "beget_server_capabilities", Arguments: map[string]any{},
+	})
+	require.NoError(t, err)
+	assert.False(t, result.IsError)
+	capabilities := structuredMap(t, result)["result"].(map[string]any)
+	assert.Equal(t, true, capabilities["has_mutations"])
+	methods := capabilities["supported_beget_methods"].([]any)
+	require.Len(t, methods, 2)
+	for _, value := range methods {
+		assert.Equal(t, "dns", value.(map[string]any)["section"])
+	}
+
+	read, err := session.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: capabilitiesResourceURI})
+	require.NoError(t, err)
+	require.Len(t, read.Contents, 1)
+	var catalog capabilityCatalog
+	require.NoError(t, json.Unmarshal([]byte(read.Contents[0].Text), &catalog))
+	require.Len(t, catalog.Categories, 2)
+	assert.Equal(t, "local diagnostics", catalog.Categories[0].Name)
+	assert.Equal(t, "dns", catalog.Categories[1].Name)
+	catalogTools := append([]string{}, catalog.Categories[0].Inspect...)
+	catalogTools = append(catalogTools, catalog.Categories[0].Change...)
+	catalogTools = append(catalogTools, catalog.Categories[1].Inspect...)
+	catalogTools = append(catalogTools, catalog.Categories[1].Change...)
+	assert.ElementsMatch(t, toolNames, catalogTools)
+	assert.Zero(t, caller.calls, "filtered local metadata must not call Beget")
 }
 
 func TestOperationCatalogLinksOfficialDocumentationAndDoesNotHideMutations(t *testing.T) {

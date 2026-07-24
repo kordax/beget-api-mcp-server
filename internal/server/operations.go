@@ -45,7 +45,7 @@ type schemaRule struct {
 }
 
 func (s *service) addOperations(server *mcp.Server) {
-	for _, spec := range operationCatalog {
+	for _, spec := range s.operations {
 		spec.register(server, s)
 	}
 }

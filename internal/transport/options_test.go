@@ -17,7 +17,17 @@ func TestParseOptionsDefaultsToStdio(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, ModeStdio, options.Mode)
+	assert.Empty(t, options.ToolSections)
 	assert.Equal(t, "/mcp", options.HTTPPath)
+}
+
+func TestParseOptionsSelectsToolSections(t *testing.T) {
+	options, err := ParseOptions(Arguments{
+		"--tool-sections", "DNS, site, dns, account, statistics",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"dns", "site", "user", "stat"}, options.ToolSections)
 }
 
 func TestParseOptionsSelectsHTTPTransports(t *testing.T) {
@@ -79,6 +89,16 @@ func TestParseOptionsRejectsMalformedArguments(t *testing.T) {
 	}{
 		"unknown flag":        {Arguments{"--unknown"}, "flag provided but not defined"},
 		"positional argument": {Arguments{"unexpected"}, "unexpected positional arguments"},
+		"empty tool sections": {Arguments{"--tool-sections", ""}, "tool sections cannot be empty"},
+		"empty tool section item": {
+			Arguments{"--tool-sections", "dns,,site"}, "empty value",
+		},
+		"all combined with section": {
+			Arguments{"--tool-sections", "all,dns"}, "cannot be combined",
+		},
+		"unknown tool section": {
+			Arguments{"--tool-sections", "cloud"}, "unknown tool section",
+		},
 		"negative timeout": {Arguments{
 			"--streamable-http", "--streamable-session-timeout", "-1s",
 		}, "session timeout cannot be negative"},

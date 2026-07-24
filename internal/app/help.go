@@ -25,6 +25,9 @@ Transport options:
   --stdio                              Use the stdio MCP transport (default)
   --streamable-http                    Use the Streamable HTTP MCP transport
   --sse                                Use the legacy SSE MCP transport
+  --tool-sections <sections>           Enable selected Beget tool sections (default all)
+                                        account, backup, cron, dns, ftp, mysql,
+                                        site, domain, mail, statistics
   --http-address <address>             Loopback address (default 127.0.0.1:8080)
   --http-path <path>                   Endpoint path (default /mcp or /sse)
   --http-auth                          Require BEGET_MCP_HTTP_TOKEN
