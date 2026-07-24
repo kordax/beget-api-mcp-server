@@ -51,7 +51,7 @@ beget-api-mcp-server credentials check
 Пароль API вводится через скрытый запрос и не должен передаваться аргументом команды. Все локальные MCP-клиенты одного
 пользователя читают общее защищенное хранилище credentials.
 
-## 3. Как настроить GoLand глобально
+## 3. Как настроить Jetbrains IDE (на примере GoLand) глобально
 
 1. Убедитесь, что плагин JetBrains AI Assistant включен.
 2. Откройте `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`.
