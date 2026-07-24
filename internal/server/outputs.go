@@ -140,6 +140,22 @@ type AccountInfoResult struct {
 	PlanQuota           APIInt64   `json:"plan_quota"`
 	UserFTP             APIInt64   `json:"user_ftp"`
 	PlanFTP             APIInt64   `json:"plan_ftp"`
+	UserMail            APIInt64   `json:"user_mail"`
+	PlanMail            APIInt64   `json:"plan_mail"`
+	UserBash            string     `json:"user_bash"`
+	PlanCP              APIInt64   `json:"plan_cp"`
+	UserRateCurrent     APIFloat64 `json:"user_rate_current"`
+	UserIsYearPlan      APIBool    `json:"user_is_year_plan"`
+	UserRateYear        APIFloat64 `json:"user_rate_year"`
+	UserRateMonth       APIFloat64 `json:"user_rate_month"`
+	UserBalance         APIFloat64 `json:"user_balance"`
+	UserDaysToBlock     APIInt64   `json:"user_days_to_block"`
+	ServerApacheVersion string     `json:"server_apache_version"`
+	ServerMySQLVersion  string     `json:"server_mysql_version"`
+	ServerNginxVersion  string     `json:"server_nginx_version"`
+	ServerPerlVersion   string     `json:"server_perl_version"`
+	ServerPHPVersion    string     `json:"server_php_version"`
+	ServerPythonVersion string     `json:"server_python_version"`
 	ServerName          string     `json:"server_name"`
 	ServerCPUName       string     `json:"server_cpu_name"`
 	ServerMemory        APIInt64   `json:"server_memory"`
@@ -224,12 +240,12 @@ type SiteDomain struct {
 	LosslessFields
 	ID            APIInt64 `json:"id"`
 	FQDN          string   `json:"fqdn"`
-	PHPVersion    string   `json:"php_version,omitempty"`
-	HTTPVersion   APIInt64 `json:"http_version,omitempty"`
-	SSL           APIBool  `json:"ssl,omitempty"`
-	SSLStatus     string   `json:"ssl_status,omitempty"`
-	NginxTemplate string   `json:"nginx_template,omitempty"`
-	RedisSession  APIBool  `json:"redis_session,omitempty"`
+	PHPVersion    string   `json:"php_version"`
+	HTTPVersion   APIInt64 `json:"http_version"`
+	SSL           APIBool  `json:"ssl"`
+	SSLStatus     string   `json:"ssl_status"`
+	NginxTemplate string   `json:"nginx_template"`
+	RedisSession  APIBool  `json:"redis_session"`
 }
 
 type Site struct {
@@ -245,19 +261,19 @@ type SiteFrozenResult struct {
 
 type Domain struct {
 	LosslessFields
-	ID                   APIInt64  `json:"id"`
-	FQDN                 string    `json:"fqdn"`
-	DateAdded            string    `json:"date_add"`
-	AutoRenew            APIBool   `json:"auto_renew"`
-	DateRegistered       string    `json:"date_register,omitempty"`
-	DateExpires          APIString `json:"date_expire,omitempty"`
-	CanRenew             APIBool   `json:"can_renew"`
-	Registrar            *string   `json:"registrar"`
-	RegistrarStatus      *string   `json:"registrar_status"`
-	RegisterOrderStatus  *string   `json:"register_order_status"`
-	RegisterOrderComment *string   `json:"register_order_comment"`
-	RenewOrderStatus     APIString `json:"renew_order_status"`
-	IsUnderControl       APIBool   `json:"is_under_control"`
+	ID                   APIInt64   `json:"id"`
+	FQDN                 string     `json:"fqdn"`
+	DateAdded            string     `json:"date_add"`
+	AutoRenew            APIBool    `json:"auto_renew"`
+	DateRegistered       *APIString `json:"date_register"`
+	DateExpires          *APIString `json:"date_expire"`
+	CanRenew             APIBool    `json:"can_renew"`
+	Registrar            *string    `json:"registrar"`
+	RegistrarStatus      *string    `json:"registrar_status"`
+	RegisterOrderStatus  *string    `json:"register_order_status"`
+	RegisterOrderComment *string    `json:"register_order_comment"`
+	RenewOrderStatus     APIString  `json:"renew_order_status"`
+	IsUnderControl       APIBool    `json:"is_under_control"`
 }
 
 type DomainZone struct {
@@ -286,7 +302,7 @@ type DomainRegistrationResult struct {
 	MayBeRegistered APIBool    `json:"may_be_registered"`
 	BonusDomains    APIInt64   `json:"bonus_domains"`
 	Balance         APIFloat64 `json:"balance"`
-	PayType         *string    `json:"pay_type"`
+	PayType         *APIString `json:"pay_type"`
 	Price           APIFloat64 `json:"price"`
 	InSystem        APIBool    `json:"in_system"`
 }
@@ -363,16 +379,21 @@ type SiteLoadDetails struct {
 
 type DatabaseLoadPoint struct {
 	LosslessFields
-	Date    string     `json:"date,omitempty"`
-	CPUTime APIFloat64 `json:"cpu_time,omitempty"`
-	Size    APIInt64   `json:"size,omitempty"`
+	Date    string     `json:"date"`
+	CPUTime APIFloat64 `json:"cpu_time"`
+}
+
+type DatabaseSizePoint struct {
+	LosslessFields
+	Date string   `json:"date"`
+	Size APIInt64 `json:"size"`
 }
 
 type DatabaseLoadDetails struct {
 	LosslessFields
 	Days     []DatabaseLoadPoint `json:"days"`
 	Hours    []DatabaseLoadPoint `json:"hours"`
-	SizeDays []DatabaseLoadPoint `json:"size_days"`
+	SizeDays []DatabaseSizePoint `json:"size_days"`
 }
 
 type DNSOutputRecord struct {

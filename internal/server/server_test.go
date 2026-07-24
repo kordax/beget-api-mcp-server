@@ -247,7 +247,7 @@ func TestToolContractSnapshot(t *testing.T) {
 	assert.Len(t, result.Tools, 67)
 	assert.LessOrEqual(t, len(encoded), 172000, "typed contracts must remain compact after adding explicit safety guidance")
 	actual := fmt.Sprintf("%x", sha256.Sum256(encoded))
-	assert.Equal(t, "560805bd65630572627ef30ee95ef01024bc3f571e3dc6fd67d6e765162ad49e", actual, "intentional MCP contract changes require updating this snapshot")
+	assert.Equal(t, "538ec12c597d4603f88e755f9537bb692166bad686b8dee4fa6967523f82f768", actual, "intentional MCP contract changes require updating this snapshot")
 }
 
 func TestCapabilitiesResourceIsCompactAndDerivedFromOperationCatalog(t *testing.T) {
