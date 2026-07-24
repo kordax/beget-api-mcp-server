@@ -89,6 +89,25 @@ Running `beget-api-mcp-server` without a subcommand starts its STDIO transport a
 interactive Beget shell. Hosting operations are available as MCP tools and are normally invoked by GoLand, Codex, or
 another MCP client.
 
+If the client does not need every Hosting API section, limit the published tools:
+
+```bash
+beget-api-mcp-server --tool-sections dns,site,domain
+```
+
+All sections are enabled by default. Accepted values are `account`, `backup`, `cron`, `dns`, `ftp`, `mysql`, `site`,
+`domain`, `mail`, and `statistics`. Local diagnostic tools are always available. `tools/list`, the
+`beget://capabilities` resource, and the `beget_server_capabilities` tool report only the enabled sections.
+
+Streamable HTTP is the primary HTTP transport:
+
+```bash
+beget-api-mcp-server --streamable-http
+```
+
+HTTP transports accept connections only on a loopback interface. The `--http-auth` flag enables Bearer authentication
+with the token from `BEGET_MCP_HTTP_TOKEN`. The `--sse` transport remains available only for legacy MCP clients.
+
 Add the server globally to Codex:
 
 ```bash

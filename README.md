@@ -90,6 +90,25 @@ beget-api-mcp-server upgrade
 консоль Beget. Операции с хостингом доступны как MCP-инструменты, которые обычно вызывает GoLand, Codex или другой
 MCP-клиент.
 
+Если клиенту не нужны все разделы Hosting API, ограничьте публикуемые инструменты:
+
+```bash
+beget-api-mcp-server --tool-sections dns,site,domain
+```
+
+По умолчанию включены все разделы. Допустимые значения: `account`, `backup`, `cron`, `dns`, `ftp`, `mysql`, `site`,
+`domain`, `mail` и `statistics`. Локальные инструменты диагностики доступны всегда. `tools/list`, ресурс
+`beget://capabilities` и инструмент `beget_server_capabilities` показывают только включённые разделы.
+
+Для HTTP основным транспортом служит Streamable HTTP:
+
+```bash
+beget-api-mcp-server --streamable-http
+```
+
+HTTP-транспорты принимают подключения только через loopback-интерфейс. Флаг `--http-auth` включает Bearer-аутентификацию
+с токеном из `BEGET_MCP_HTTP_TOKEN`. Транспорт `--sse` оставлен только для совместимости с устаревшими MCP-клиентами.
+
 Добавьте сервер в глобальную конфигурацию Codex:
 
 ```bash
