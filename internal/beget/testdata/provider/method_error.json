@@ -1,0 +1,16 @@
+{
+  "status": "success",
+  "answer": {
+    "status": "error",
+    "errors": [
+      {
+        "error_code": "INVALID_DATA",
+        "error_text": "sanitized fixture rejection"
+      },
+      {
+        "error_code": 1200,
+        "error_text": "second sanitized rejection"
+      }
+    ]
+  }
+}

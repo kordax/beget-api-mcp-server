@@ -1,0 +1,23 @@
+[
+  {
+    "id": "101",
+    "path": "example.test/public_html",
+    "domains": [
+      {
+        "id": 202,
+        "fqdn": "example.test",
+        "php_version": "8.4",
+        "http_version": "2",
+        "ssl": "1",
+        "ssl_status": "active",
+        "nginx_template": "default",
+        "redis_session": false,
+        "provider_nested": {
+          "region": "test-zone",
+          "revision": 7
+        }
+      }
+    ],
+    "provider_flag": true
+  }
+]

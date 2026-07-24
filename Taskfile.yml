@@ -28,6 +28,12 @@ tasks:
     cmds:
       - go test -run '^$' -bench . -benchmem ./internal/server ./internal/beget
 
+  fuzz:
+    desc: Fuzz provider envelopes and typed result decoding locally
+    cmds:
+      - go test -run '^$' -fuzz '^FuzzProviderEnvelopeDecoding$' -fuzztime=10s ./internal/beget
+      - go test -run '^$' -fuzz '^FuzzProviderResultDecoding$' -fuzztime=10s ./internal/server
+
   test-installers:
     desc: Validate the system installer scripts
     cmds:

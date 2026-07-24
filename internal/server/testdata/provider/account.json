@@ -1,0 +1,23 @@
+{
+  "plan_name": "Fixture",
+  "user_sites": "2",
+  "plan_site": 10,
+  "user_domains": "3",
+  "plan_domain": 20,
+  "user_mysqlsize": "128",
+  "plan_mysql": 1024,
+  "user_quota": "512",
+  "plan_quota": 4096,
+  "user_ftp": "1",
+  "plan_ftp": 5,
+  "server_name": "fixture.example.test",
+  "server_cpu_name": "Fixture CPU",
+  "server_memory": "8192",
+  "server_memorycurrent": 2048,
+  "server_loadaverage": "0.42",
+  "server_uptime": 86400,
+  "provider_limits": {
+    "burst": true,
+    "labels": ["sanitized", "fixture"]
+  }
+}

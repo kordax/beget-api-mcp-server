@@ -1,0 +1,18 @@
+{
+  "status": "success",
+  "answer": {
+    "status": "success",
+    "result": {
+      "items": [
+        {
+          "id": "101",
+          "name": "example.test"
+        }
+      ],
+      "provider_meta": {
+        "revision": 3,
+        "cached": false
+      }
+    }
+  }
+}
