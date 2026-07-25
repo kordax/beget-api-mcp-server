@@ -7,6 +7,10 @@
 A small local MCP server for managing Beget hosting from GoLand, Codex, and other MCP clients. It exposes typed tools,
 and every hosting change requires explicit user confirmation.
 
+This is an independent open-source project. It is not an official Beget product and is not endorsed or supported by Beget.
+
+[Beget web hosting](https://beget.com/en/hosting/virtual) · [Beget Hosting API documentation](https://beget.com/en/kb/api/beget-api)
+
 It is useful when you need to edit DNS settings, analyze records, work with files, or handle other tasks through an
 agent.
 
