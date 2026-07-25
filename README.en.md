@@ -52,7 +52,7 @@ beget-api-mcp-server credentials check
 The API password is read from a hidden prompt and must not be passed as a command argument. All local MCP clients for
 the same user read the same protected credential store.
 
-## 3. Configure GoLand globally
+## 3. Configure a JetBrains IDE globally (using GoLand as an example)
 
 1. Make sure the JetBrains AI Assistant plugin is enabled.
 2. Open `Settings | Tools | AI Assistant | Model Context Protocol (MCP)`.
