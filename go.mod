@@ -7,7 +7,7 @@ toolchain go1.26.5
 require (
 	github.com/google/jsonschema-go v0.4.3
 	github.com/kordax/basic-utils/v3 v3.4.0
-	github.com/modelcontextprotocol/go-sdk v1.6.1
+	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/stretchr/testify v1.11.1
 	github.com/zalando/go-keyring v0.2.8
 	go.uber.org/dig v1.19.0
@@ -27,6 +27,8 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
