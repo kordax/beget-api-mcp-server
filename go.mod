@@ -1,6 +1,6 @@
 module github.com/kordax/beget-api-mcp-server
 
-go 1.26
+go 1.26.0
 
 toolchain go1.26.5
 
@@ -12,7 +12,7 @@ require (
 	github.com/zalando/go-keyring v0.2.8
 	go.uber.org/dig v1.19.0
 	go.uber.org/fx v1.24.0
-	golang.org/x/term v0.45.0
+	golang.org/x/term v0.46.0
 )
 
 require (
@@ -27,6 +27,6 @@ require (
 	go.uber.org/zap v1.28.0 // indirect
 	golang.org/x/exp v0.0.0-20260709172345-9ea1abe57597 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
